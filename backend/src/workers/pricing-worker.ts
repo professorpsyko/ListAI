@@ -1,5 +1,4 @@
 import { Worker, Job } from 'bullmq';
-import { Prisma } from '@prisma/client';
 import { redisConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { researchPricing } from '../services/pricing';
@@ -28,7 +27,7 @@ export function startPricingWorker() {
       await prisma.listing.update({
         where: { id: listingId },
         data: {
-          pricingResearch: result as unknown as Prisma.InputJsonValue,
+          pricingResearch: JSON.parse(JSON.stringify(result)),
           suggestedPrice: result.suggestedPrice,
           pricingJobStatus: 'COMPLETE',
           pricingJobId: job.id ?? null,

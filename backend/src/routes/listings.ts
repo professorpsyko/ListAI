@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { imageQueue, pricingQueue } from '../queues';
@@ -180,7 +179,7 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
     await prisma.listing.update({
       where: { id: req.params.id },
       data: {
-        rawIdentification: result as unknown as Prisma.InputJsonValue,
+        rawIdentification: JSON.parse(JSON.stringify(result)),
         itemCategory: result.ebayCategory,
       },
     });
@@ -222,7 +221,7 @@ router.post('/:id/retry-identify', requireAuth, async (req: Request, res: Respon
     await prisma.listing.update({
       where: { id: req.params.id },
       data: {
-        rawIdentification: result as unknown as Prisma.InputJsonValue,
+        rawIdentification: JSON.parse(JSON.stringify(result)),
         itemCategory: result.ebayCategory,
       },
     });
