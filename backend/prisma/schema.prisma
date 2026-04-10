@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  clerkId   String    @unique
+  email     String    @unique
+  createdAt DateTime  @default(now())
+  settings  Settings?
+  listings  Listing[]
+}
+
+model Settings {
+  id                     String  @id @default(cuid())
+  userId                 String  @unique
+  user                   User    @relation(fields: [userId], references: [id])
+  autoFillSuggestedPrice Boolean @default(false)
+  autoFillShipping       Boolean @default(false)
+  defaultListingType     String  @default("BUY_IT_NOW")
+  defaultAuctionDuration Int     @default(7)
+}
+
+model Listing {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  status             String   @default("DRAFT")
+  itemTitle          String?
+  itemDescription    String?
+  itemCategory       String?
+  itemCondition      String?
+  itemColor          String?
+  specialNotes       String?
+  suggestedPrice     Float?
+  finalPrice         Float?
+  shippingService    String?
+  shippingCost       Float?
+  handlingTime       String?
+  acceptReturns      Boolean  @default(false)
+  returnWindow       Int?
+  listingType        String   @default("BUY_IT_NOW")
+  auctionDuration    Int?
+  startingBid        Float?
+  ebayListingId      String?
+  imageUrls          String[]
+  processedImageUrls String[]
+  rawIdentification  Json?
+  pricingResearch    Json?
+  shippingSuggestion Json?
+  imageJobId         String?
+  imageJobStatus     String   @default("PENDING")
+  pricingJobId       String?
+  pricingJobStatus   String   @default("PENDING")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
