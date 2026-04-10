@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { imageQueue, pricingQueue } from '../queues';
 import { uploadToCloudinary } from '../services/image';
 import { identifyItem } from '../services/vision';
-import { generateTitle, generateDescription, suggestShipping } from '../services/listing-ai';
+import { generateTitle, generateDescription } from '../services/listing-ai';
 import { upsertListingMemory } from '../services/rag';
 import { publishListing } from '../services/ebay';
 import fs from 'fs';
@@ -179,7 +180,7 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
     await prisma.listing.update({
       where: { id: req.params.id },
       data: {
-        rawIdentification: result as unknown as Record<string, unknown>,
+        rawIdentification: result as unknown as Prisma.InputJsonValue,
         itemCategory: result.ebayCategory,
       },
     });
@@ -221,7 +222,7 @@ router.post('/:id/retry-identify', requireAuth, async (req: Request, res: Respon
     await prisma.listing.update({
       where: { id: req.params.id },
       data: {
-        rawIdentification: result as unknown as Record<string, unknown>,
+        rawIdentification: result as unknown as Prisma.InputJsonValue,
         itemCategory: result.ebayCategory,
       },
     });
