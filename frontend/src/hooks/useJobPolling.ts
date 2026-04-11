@@ -7,9 +7,6 @@ export function useJobPolling(listingId: string | null) {
   const setProcessedPhotos = useListingStore((s) => s.setProcessedPhotos);
   const setPricingJobStatus = useListingStore((s) => s.setPricingJobStatus);
   const setPricingResearch = useListingStore((s) => s.setPricingResearch);
-  const setFinalPrice = useListingStore((s) => s.setFinalPrice);
-  const finalPrice = useListingStore((s) => s.finalPrice);
-
   return useQuery({
     queryKey: ['job-status', listingId],
     queryFn: async () => {
@@ -30,10 +27,6 @@ export function useJobPolling(listingId: string | null) {
       }
       if (data.pricingResearch) {
         setPricingResearch(data.pricingResearch);
-        // Auto-fill price only if not already set (auto-fill handled in Step 4 component)
-        if (!finalPrice && data.suggestedPrice) {
-          // Let the component decide based on settings
-        }
       }
 
       return data;

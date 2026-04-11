@@ -5,11 +5,6 @@ import { identifyItem, retryIdentify, triggerPriceResearch } from '../lib/api';
 import type { IdentificationResult } from '../store/listingStore';
 import clsx from 'clsx';
 
-const CONDITIONS = [
-  'New', 'New other (see details)', 'Manufacturer refurbished', 'Seller refurbished',
-  'Used — like new', 'Used — good', 'Used — acceptable', 'For parts or not working',
-];
-
 export default function Step2Identify() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
