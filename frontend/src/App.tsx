@@ -45,8 +45,18 @@ export default function App() {
     <>
       <AuthSync />
       <Routes>
-        <Route path="/sign-in/*" element={<SignIn routing="path" path="/sign-in" />} />
-        <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
+        <Route path="/sign-in/*" element={
+          <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+            <div className="mb-6 text-2xl font-bold text-blue-600 tracking-tight">Speedlist</div>
+            <SignIn routing="path" path="/sign-in" />
+          </div>
+        } />
+        <Route path="/sign-up/*" element={
+          <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+            <div className="mb-6 text-2xl font-bold text-blue-600 tracking-tight">Speedlist</div>
+            <SignUp routing="path" path="/sign-up" />
+          </div>
+        } />
 
         <Route path="/" element={<RequireAuth><Navigate to="/dashboard" replace /></RequireAuth>} />
 
