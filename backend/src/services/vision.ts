@@ -107,9 +107,9 @@ Respond ONLY in this exact JSON format:
   ]
 }`;
 
-  console.log('[vision] Calling claude-3-5-sonnet-20241022...');
+  console.log('[vision] Calling claude-3-7-sonnet-20250219...');
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-7-sonnet-20250219',
     max_tokens: 1024,
     system: systemPrompt,
     messages: [

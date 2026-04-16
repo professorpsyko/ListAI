@@ -54,7 +54,7 @@ app.get('/api/test-claude', async (_req, res) => {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-7-sonnet-20250219',
       max_tokens: 32,
       messages: [{ role: 'user', content: 'Reply with just the word WORKING.' }],
     });
