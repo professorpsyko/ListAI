@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { uploadPhotos } from '../lib/api';
