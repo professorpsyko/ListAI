@@ -8,7 +8,7 @@ const LABEL_STAGES = [
   { delay: 0,     pct: 8,  text: 'Sending photo to the cloud...' },
   { delay: 1500,  pct: 30, text: 'Uploading to image service...' },
   { delay: 3500,  pct: 55, text: 'Getting your label camera-ready...' },
-  { delay: 6000,  pct: 75, "text": "Optimising for eBay image standards..." },
+  { delay: 6000,  pct: 75, text: 'Optimising for marketplace image standards...' },
   { delay: 9000,  pct: 88, text: 'Almost listing-ready...' },
   { delay: 13000, pct: 95, text: 'Wrapping up — nearly there...' },
 ];
@@ -17,8 +17,8 @@ const ITEMS_STAGES = [
   { delay: 0,     pct: 5,  text: 'Sending shots to the cloud...' },
   { delay: 1500,  pct: 22, text: 'Uploading to image service...' },
   { delay: 3500,  pct: 42, text: 'Working some listing magic...' },
-  { delay: 6000,  pct: 60, text: 'Polishing pixels for eBay buyers...' },
-  { delay: 9000,  pct: 76, text: 'Optimising for crisp, click-worthy photos...' },
+  { delay: 6000,  pct: 60, text: 'Polishing pixels for online shoppers...' },
+  { delay: 9000,  pct: 76, text: 'Optimising for crisp, click-worthy listings...' },
   { delay: 13000, pct: 88, text: 'Almost ready to dazzle shoppers...' },
   { delay: 18000, pct: 95, text: 'Final touches — hang tight...' },
 ];
