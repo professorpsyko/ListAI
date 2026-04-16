@@ -90,41 +90,52 @@ router.post(
 
     const files = req.files as Express.Multer.File[];
     if (!files?.length) {
+      console.log('[upload] No files found in request');
       res.status(400).json({ error: 'No files uploaded' });
       return;
     }
 
+    console.log(`[upload] Received ${files.length} file(s) for listing ${req.params.id}`);
+
     // Upload all files to Cloudinary
-    const uploadResults = await Promise.all(
-      files.map((file) => uploadToCloudinary(file.buffer)),
-    );
+    console.log('[upload] Starting Cloudinary upload...');
+    let uploadResults: { url: string; publicId: string }[];
+    try {
+      uploadResults = await Promise.all(
+        files.map((file) => uploadToCloudinary(file.buffer)),
+      );
+    } catch (cloudErr) {
+      console.error('[upload] Cloudinary upload failed:', cloudErr);
+      res.status(500).json({ error: 'Image upload to Cloudinary failed', detail: (cloudErr as Error).message });
+      return;
+    }
+    console.log(`[upload] Cloudinary upload done — ${uploadResults.length} URL(s)`);
 
     const newUrls = uploadResults.map((r) => r.url);
     const newPublicIds = uploadResults.map((r) => r.publicId);
-
     const allUrls = [...listing.imageUrls, ...newUrls];
-    const allPublicIds = [
-      // Reconstruct existing public IDs from stored URLs if needed
-      ...newPublicIds,
-    ];
 
     await prisma.listing.update({
       where: { id: req.params.id },
-      data: { imageUrls: allUrls, imageJobStatus: 'PENDING' },
+      data: { imageUrls: allUrls, imageJobStatus: 'QUEUED' },
     });
 
-    // Fire image processing background job
-    const job = await imageQueue.add('process-images', {
+    // Fire-and-forget: queue image processing without blocking the response
+    imageQueue.add('process-images', {
       listingId: req.params.id,
-      publicIds: allPublicIds,
+      publicIds: newPublicIds,
+    }).then((job) => {
+      console.log(`[upload] Image job queued: ${job.id}`);
+      prisma.listing.update({
+        where: { id: req.params.id },
+        data: { imageJobId: job.id ?? null },
+      }).catch((e) => console.error('[upload] Failed to save jobId:', e));
+    }).catch((e) => {
+      console.error('[upload] Failed to queue image job (Redis may be down):', e);
     });
 
-    await prisma.listing.update({
-      where: { id: req.params.id },
-      data: { imageJobId: job.id ?? null, imageJobStatus: 'QUEUED' },
-    });
-
-    res.json({ urls: allUrls, jobId: job.id });
+    console.log('[upload] Responding with URLs');
+    res.json({ urls: allUrls });
   },
 );
 

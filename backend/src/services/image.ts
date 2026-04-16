@@ -23,6 +23,7 @@ export async function uploadToCloudinary(input: string | Buffer): Promise<{ url:
     const result = await cloudinary.uploader.upload(dataUri, {
       folder: 'listai/originals',
       resource_type: 'image',
+      timeout: 30000,
     });
     return { url: result.secure_url, publicId: result.public_id };
   }
@@ -31,6 +32,7 @@ export async function uploadToCloudinary(input: string | Buffer): Promise<{ url:
   const result = await cloudinary.uploader.upload(input, {
     folder: 'listai/originals',
     resource_type: 'image',
+    timeout: 30000,
   });
   return { url: result.secure_url, publicId: result.public_id };
 }
