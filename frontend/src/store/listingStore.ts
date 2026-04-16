@@ -29,6 +29,8 @@ export interface ListingState {
   /** Name + size of the label file, used to detect duplicates when uploading item photos */
   labelPhotoMeta: { name: string; size: number } | null;
   itemPhotoUrls: string[];
+  /** Metadata for each item photo, parallel to itemPhotoUrls, used for reverse-duplicate detection */
+  itemPhotoMetas: Array<{ name: string; size: number }>;
   processedPhotoUrls: string[];
   imageJobStatus: 'PENDING' | 'QUEUED' | 'PROCESSING' | 'COMPLETE' | 'FAILED';
 
@@ -73,7 +75,7 @@ export interface ListingState {
   // Actions
   setListingId: (id: string) => void;
   setLabelPhoto: (url: string, meta?: { name: string; size: number } | null) => void;
-  setItemPhotos: (urls: string[]) => void;
+  setItemPhotos: (urls: string[], metas?: Array<{ name: string; size: number }>) => void;
   setProcessedPhotos: (urls: string[]) => void;
   setImageJobStatus: (s: ListingState['imageJobStatus']) => void;
   setIdentification: (r: IdentificationResult | null) => void;
@@ -106,6 +108,7 @@ const initialState = {
   labelPhotoUrl: null,
   labelPhotoMeta: null,
   itemPhotoUrls: [],
+  itemPhotoMetas: [],
   processedPhotoUrls: [],
   imageJobStatus: 'PENDING' as const,
   identification: null,
@@ -138,7 +141,10 @@ export const useListingStore = create<ListingState>()(
       ...initialState,
       setListingId: (id) => set({ listingId: id }),
       setLabelPhoto: (url, meta) => set({ labelPhotoUrl: url, labelPhotoMeta: meta ?? null }),
-      setItemPhotos: (urls) => set({ itemPhotoUrls: urls }),
+      setItemPhotos: (urls, metas) => set((s) => ({
+        itemPhotoUrls: urls,
+        itemPhotoMetas: metas ?? (urls.length < s.itemPhotoMetas.length ? s.itemPhotoMetas.slice(0, urls.length) : s.itemPhotoMetas),
+      })),
       setProcessedPhotos: (urls) => set({ processedPhotoUrls: urls }),
       setImageJobStatus: (s) => set({ imageJobStatus: s }),
       setIdentification: (r) => set({ identification: r }),

@@ -83,6 +83,7 @@ export default function Step1Photos() {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [labelUploading, setLabelUploading] = useState(false);
   const [itemsUploading, setItemsUploading] = useState(false);
+  const [reverseDupeWarning, setReverseDupeWarning] = useState<string | null>(null);
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
@@ -110,9 +111,24 @@ export default function Step1Photos() {
       // Persist label meta in store so duplicate detection survives remounts / back-nav
       store.setLabelPhoto(newLabelUrl, labelMeta);
       store.setImageJobStatus('QUEUED');
-      // Also remove this file from item photos if it was previously added
-      const filteredItems = store.itemPhotoUrls; // can't compare URLs to file, rely on upload-time filter
-      syncPhotosToBackend(id, newLabelUrl, filteredItems);
+
+      // Reverse-duplicate: if this file was already in box 2, remove it
+      const existingMetas = store.itemPhotoMetas;
+      const dupeIndexes = existingMetas.reduce<number[]>((acc, m, i) => {
+        if (m.name === labelMeta.name && m.size === labelMeta.size) acc.push(i);
+        return acc;
+      }, []);
+      if (dupeIndexes.length > 0) {
+        const updatedUrls = store.itemPhotoUrls.filter((_, i) => !dupeIndexes.includes(i));
+        const updatedMetas = existingMetas.filter((_, i) => !dupeIndexes.includes(i));
+        store.setItemPhotos(updatedUrls, updatedMetas);
+        setReverseDupeWarning(
+          `That photo was already in your item shots — moved it to the label slot and removed the duplicate from box 2.`,
+        );
+        syncPhotosToBackend(id, newLabelUrl, updatedUrls);
+      } else {
+        syncPhotosToBackend(id, newLabelUrl, store.itemPhotoUrls);
+      }
     } catch (err) {
       clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
@@ -156,11 +172,14 @@ export default function Step1Photos() {
     try {
       const result = await uploadPhotos(id, toUpload);
       clearTimeout(timeout);
-      const updatedItems = [...store.itemPhotoUrls, ...result.urls];
-      store.setItemPhotos(updatedItems);
+      const updatedUrls = [...store.itemPhotoUrls, ...result.urls];
+      // Store metas parallel to urls so reverse-duplicate detection can work
+      const newMetas = toUpload.map((f) => ({ name: f.name, size: f.size }));
+      const updatedMetas = [...store.itemPhotoMetas, ...newMetas];
+      store.setItemPhotos(updatedUrls, updatedMetas);
       store.setImageJobStatus('QUEUED');
       // Sync full list to backend
-      syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updatedItems);
+      syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updatedUrls);
     } catch (err) {
       clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
@@ -183,9 +202,10 @@ export default function Step1Photos() {
   }
 
   function removeItemPhoto(idx: number) {
-    const updated = store.itemPhotoUrls.filter((_, i) => i !== idx);
-    store.setItemPhotos(updated);
-    if (id) syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updated);
+    const updatedUrls = store.itemPhotoUrls.filter((_, i) => i !== idx);
+    const updatedMetas = store.itemPhotoMetas.filter((_, i) => i !== idx);
+    store.setItemPhotos(updatedUrls, updatedMetas);
+    if (id) syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updatedUrls);
   }
 
   function removeLabelPhoto() {
@@ -341,7 +361,17 @@ export default function Step1Photos() {
         </div>
       </div>
 
-      {/* Duplicate warning */}
+      {/* Reverse-duplicate warning (label photo was already in box 2) */}
+      {reverseDupeWarning && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <p className="text-sm text-amber-700">{reverseDupeWarning}</p>
+        </div>
+      )}
+
+      {/* Duplicate warning (item photo matched label when uploading to box 2) */}
       {duplicateWarning && (
         <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3">
           <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

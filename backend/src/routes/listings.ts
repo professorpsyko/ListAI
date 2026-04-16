@@ -181,8 +181,10 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
     return;
   }
 
+  console.log(`[identify] Running on listing ${req.params.id} with ${imageUrls.length} image(s)`);
   try {
     const result = await identifyItem({ imageUrls });
+    console.log(`[identify] Success: ${result.identification} (confidence ${result.confidence})`);
     await prisma.listing.update({
       where: { id: req.params.id },
       data: {
@@ -191,8 +193,9 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
       },
     });
     res.json(result);
-  } catch {
-    // Graceful fallback
+  } catch (err) {
+    console.error('[identify] Failed:', err);
+    // Graceful fallback — return structured error so UI can show it
     res.json({
       identification: '',
       brand: '',
