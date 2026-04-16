@@ -194,8 +194,9 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
     });
     res.json(result);
   } catch (err) {
-    console.error('[identify] Failed:', err);
-    // Graceful fallback — return structured error so UI can show it
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error('[identify] Failed:', errMsg);
+    // Include the real error message so the UI can display it for debugging
     res.json({
       identification: '',
       brand: '',
@@ -205,7 +206,7 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
       ebayCategoryId: null,
       confidence: 0,
       alternativeIdentifications: [],
-      error: 'Could not identify item — please enter manually',
+      error: errMsg,
     });
   }
 });

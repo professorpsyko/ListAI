@@ -235,6 +235,11 @@ export default function Step2Identify() {
         <h2 className="text-2xl font-bold text-gray-900">Couldn't identify item</h2>
         <p className="text-gray-500 mt-1">We had trouble recognizing your item from the photos.</p>
       </div>
+      {identification?.error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <p className="text-xs font-mono text-red-700 break-all">{identification.error}</p>
+        </div>
+      )}
       <div className="flex gap-3">
         <button onClick={runIdentify} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
           Try again
