@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { SignIn, SignUp, useAuth, useUser } from '@clerk/clerk-react';
-import { syncEmail } from './lib/api';
+import { syncEmail, registerTokenGetter } from './lib/api';
 
 import WizardLayout from './components/WizardLayout';
 import Step1Photos from './pages/Step1Photos';
@@ -16,8 +16,13 @@ import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 
 function AuthSync() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
+
+  // Register token getter so axios interceptor can attach Bearer tokens
+  useEffect(() => {
+    registerTokenGetter(() => getToken());
+  }, [getToken]);
 
   useEffect(() => {
     if (isSignedIn && user?.primaryEmailAddress?.emailAddress) {

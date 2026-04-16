@@ -11,16 +11,24 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Module-level token getter — set by ClerkTokenProvider in App.tsx
+let _getToken: (() => Promise<string | null>) | null = null;
+
+export function registerTokenGetter(fn: () => Promise<string | null>) {
+  _getToken = fn;
+}
+
 // Attach Clerk session token to every request
 api.interceptors.request.use(async (config) => {
   try {
-    // window.__clerk is set by ClerkProvider
-    const token = await (window as Window & { Clerk?: { session?: { getToken: () => Promise<string | null> } } }).Clerk?.session?.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (_getToken) {
+      const token = await _getToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
   } catch {
-    // ignore
+    // ignore — request will proceed without token and get 401
   }
   return config;
 });
