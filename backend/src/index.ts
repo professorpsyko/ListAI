@@ -15,7 +15,29 @@ import { prisma } from './lib/prisma';
 
 const app = express();
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+// Allow requests from localhost (dev) and any Vercel deployment for this project
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      // Allow any vercel.app subdomain or explicitly listed origin
+      if (
+        allowedOrigins.some((o) => origin === o) ||
+        origin.endsWith('.vercel.app') ||
+        origin === 'http://localhost:5173'
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(clerkAuth);
 
