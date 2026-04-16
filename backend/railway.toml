@@ -1,9 +1,9 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npm run db:generate && npm run db:push && npm run build"
+buildCommand = "npm install && npm run db:generate && npm run build"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "npm run db:push && npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
