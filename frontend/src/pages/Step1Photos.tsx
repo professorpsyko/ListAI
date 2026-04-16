@@ -1,5 +1,4 @@
-import { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useCallback, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { uploadPhotos } from '../lib/api';
@@ -11,53 +10,59 @@ export default function Step1Photos() {
   const store = useListingStore();
 
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [labelUploading, setLabelUploading] = useState(false);
+  const [itemsUploading, setItemsUploading] = useState(false);
+
+  const labelInputRef = useRef<HTMLInputElement>(null);
+  const itemsInputRef = useRef<HTMLInputElement>(null);
+
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
 
-  // ── Label photo upload ──────────────────────────────────────────────────────
-  const onDropLabel = useCallback(
-    async (files: File[]) => {
-      if (!files[0] || !id) return;
-      setUploadError(null);
-      try {
-        const result = await uploadPhotos(id, [files[0]]);
-        store.setLabelPhoto(result.urls[0]);
-        store.setImageJobStatus('QUEUED');
-      } catch (err) {
-        setUploadError(`Upload failed: ${(err as Error).message}. Check that Cloudinary env vars are set in Railway.`);
-      }
-    },
-    [id, store],
-  );
+  async function handleLabelFiles(files: FileList | null) {
+    if (!files || !files[0] || !id) return;
+    setUploadError(null);
+    setLabelUploading(true);
+    try {
+      const result = await uploadPhotos(id, [files[0]]);
+      store.setLabelPhoto(result.urls[0]);
+      store.setImageJobStatus('QUEUED');
+    } catch (err) {
+      setUploadError(`Upload failed: ${(err as Error).message}`);
+    } finally {
+      setLabelUploading(false);
+    }
+  }
 
-  const { getRootProps: getLabelRoot, getInputProps: getLabelInput, isDragActive: labelDrag } = useDropzone({
-    onDrop: onDropLabel,
-    accept: { 'image/*': [] },
-    maxFiles: 1,
-  });
+  async function handleItemFiles(files: FileList | null) {
+    if (!files || !files.length || !id) return;
+    setUploadError(null);
+    setItemsUploading(true);
+    try {
+      const remaining = 15 - store.itemPhotoUrls.length;
+      const fileArray = Array.from(files).slice(0, remaining);
+      const result = await uploadPhotos(id, fileArray);
+      store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
+      store.setImageJobStatus('QUEUED');
+    } catch (err) {
+      setUploadError(`Upload failed: ${(err as Error).message}`);
+    } finally {
+      setItemsUploading(false);
+    }
+  }
 
-  // ── Item photos upload ──────────────────────────────────────────────────────
-  const onDropItems = useCallback(
-    async (files: File[]) => {
-      if (!files.length || !id) return;
-      setUploadError(null);
-      try {
-        const remaining = 15 - store.itemPhotoUrls.length;
-        const toUpload = files.slice(0, remaining);
-        const result = await uploadPhotos(id, toUpload);
-        store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
-        store.setImageJobStatus('QUEUED');
-      } catch (err) {
-        setUploadError(`Upload failed: ${(err as Error).message}. Check that Cloudinary env vars are set in Railway.`);
-      }
-    },
-    [id, store],
-  );
+  // Drag and drop handlers
+  function handleDrop(e: React.DragEvent, type: 'label' | 'items') {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (type === 'label') handleLabelFiles(files);
+    else handleItemFiles(files);
+  }
 
-  const { getRootProps: getItemRoot, getInputProps: getItemInput, isDragActive: itemDrag } = useDropzone({
-    onDrop: onDropItems,
-    accept: { 'image/*': [] },
-    maxFiles: 15,
-  });
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
   function removeItemPhoto(idx: number) {
     store.setItemPhotos(store.itemPhotoUrls.filter((_, i) => i !== idx));
@@ -83,6 +88,15 @@ export default function Step1Photos() {
             <p className="text-sm text-gray-500">Take a close-up of any tag, sticker, or label on the item</p>
           </div>
 
+          {/* Hidden native file input */}
+          <input
+            ref={labelInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleLabelFiles(e.target.files)}
+          />
+
           {store.labelPhotoUrl ? (
             <div className="relative group rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
               <img src={store.labelPhotoUrl} alt="Label" className="w-full h-full object-cover" />
@@ -97,20 +111,30 @@ export default function Step1Photos() {
             </div>
           ) : (
             <div
-              {...getLabelRoot()}
+              onClick={() => labelInputRef.current?.click()}
+              onDrop={(e) => handleDrop(e, 'label')}
+              onDragOver={handleDragOver}
               className={clsx(
                 'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer transition-colors',
-                labelDrag ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
+                labelUploading ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
               )}
             >
-              <input {...getLabelInput()} />
-              <div className="p-3 bg-white rounded-full shadow-sm mb-3">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5l2 2h4a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h2z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-gray-600">Drop label photo here</p>
-              <p className="text-xs text-gray-400 mt-1">or click to browse</p>
+              {labelUploading ? (
+                <>
+                  <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-blue-600 font-medium">Uploading…</p>
+                </>
+              ) : (
+                <>
+                  <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5l2 2h4a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-600">Drop label photo here</p>
+                  <p className="text-xs text-gray-400 mt-1">or click to browse</p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -121,6 +145,16 @@ export default function Step1Photos() {
             <h3 className="font-semibold text-gray-800">Item photos</h3>
             <p className="text-sm text-gray-500">2–15 photos — front, back, sides, any damage</p>
           </div>
+
+          {/* Hidden native file input */}
+          <input
+            ref={itemsInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleItemFiles(e.target.files)}
+          />
 
           {store.itemPhotoUrls.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-3">
@@ -139,10 +173,9 @@ export default function Step1Photos() {
               ))}
               {store.itemPhotoUrls.length < 15 && (
                 <div
-                  {...getItemRoot()}
+                  onClick={() => itemsInputRef.current?.click()}
                   className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 flex items-center justify-center cursor-pointer"
                 >
-                  <input {...getItemInput()} />
                   <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
@@ -153,20 +186,30 @@ export default function Step1Photos() {
 
           {store.itemPhotoUrls.length === 0 && (
             <div
-              {...getItemRoot()}
+              onClick={() => itemsInputRef.current?.click()}
+              onDrop={(e) => handleDrop(e, 'items')}
+              onDragOver={handleDragOver}
               className={clsx(
                 'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer transition-colors',
-                itemDrag ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
+                itemsUploading ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
               )}
             >
-              <input {...getItemInput()} />
-              <div className="p-3 bg-white rounded-full shadow-sm mb-3">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-gray-600">Drop item photos here</p>
-              <p className="text-xs text-gray-400 mt-1">or click to browse • 2–15 photos</p>
+              {itemsUploading ? (
+                <>
+                  <div className="w-8 h-8 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-blue-600 font-medium">Uploading…</p>
+                </>
+              ) : (
+                <>
+                  <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-600">Drop item photos here</p>
+                  <p className="text-xs text-gray-400 mt-1">or click to browse • 2–15 photos</p>
+                </>
+              )}
             </div>
           )}
 
