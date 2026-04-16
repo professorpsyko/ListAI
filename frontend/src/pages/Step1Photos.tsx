@@ -1,45 +1,37 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
-import { uploadPhotos } from '../lib/api';
+import { uploadPhotos, updateListing } from '../lib/api';
 import clsx from 'clsx';
 
-// Each stage has a delay (ms after upload starts), a message, and a progress % for the bar
 const LABEL_STAGES = [
-  { delay: 0,     pct: 8,  text: 'Sending photo to the cloud…' },
-  { delay: 1500,  pct: 30, text: 'Uploading to image service…' },
-  { delay: 3500,  pct: 55, text: 'Getting your label camera-ready…' },
-  { delay: 6000,  pct: 75, text: "Optimising for eBay's image standards..." },
-  { delay: 9000,  pct: 88, text: 'Almost listing-ready…' },
-  { delay: 13000, pct: 95, text: 'Wrapping up — nearly there…' },
+  { delay: 0,     pct: 8,  text: 'Sending photo to the cloud...' },
+  { delay: 1500,  pct: 30, text: 'Uploading to image service...' },
+  { delay: 3500,  pct: 55, text: 'Getting your label camera-ready...' },
+  { delay: 6000,  pct: 75, "text": "Optimising for eBay image standards..." },
+  { delay: 9000,  pct: 88, text: 'Almost listing-ready...' },
+  { delay: 13000, pct: 95, text: 'Wrapping up — nearly there...' },
 ];
 
 const ITEMS_STAGES = [
-  { delay: 0,     pct: 5,  text: 'Sending shots to the cloud…' },
-  { delay: 1500,  pct: 22, text: 'Uploading to image service…' },
+  { delay: 0,     pct: 5,  text: 'Sending shots to the cloud...' },
+  { delay: 1500,  pct: 22, text: 'Uploading to image service...' },
   { delay: 3500,  pct: 42, text: 'Working some listing magic...' },
-  { delay: 6000,  pct: 60, text: 'Polishing pixels for eBay buyers…' },
-  { delay: 9000,  pct: 76, text: 'Optimising for crisp, click-worthy photos…' },
-  { delay: 13000, pct: 88, text: 'Almost ready to dazzle shoppers…' },
-  { delay: 18000, pct: 95, text: 'Final touches — hang tight…' },
+  { delay: 6000,  pct: 60, text: 'Polishing pixels for eBay buyers...' },
+  { delay: 9000,  pct: 76, text: 'Optimising for crisp, click-worthy photos...' },
+  { delay: 13000, pct: 88, text: 'Almost ready to dazzle shoppers...' },
+  { delay: 18000, pct: 95, text: 'Final touches — hang tight...' },
 ];
 
-const UPLOAD_TIMEOUT_MS = 45000; // show an error after 45 s
+const UPLOAD_TIMEOUT_MS = 45000;
 
 function useUploadStatus(uploading: boolean, stages: typeof LABEL_STAGES) {
   const [stageIndex, setStageIndex] = useState(0);
-
   useEffect(() => {
-    if (!uploading) {
-      setStageIndex(0);
-      return;
-    }
-    const timers = stages.map((s, i) =>
-      setTimeout(() => setStageIndex(i), s.delay),
-    );
+    if (!uploading) { setStageIndex(0); return; }
+    const timers = stages.map((s, i) => setTimeout(() => setStageIndex(i), s.delay));
     return () => timers.forEach(clearTimeout);
   }, [uploading]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const stage = stages[stageIndex] ?? stages[stages.length - 1];
   return { text: stage.text, pct: stage.pct };
 }
@@ -47,7 +39,6 @@ function useUploadStatus(uploading: boolean, stages: typeof LABEL_STAGES) {
 function UploadingOverlay({ text, pct }: { text: string; pct: number }) {
   return (
     <div className="flex flex-col items-center justify-center gap-5 px-8 text-center w-full">
-      {/* Spinner */}
       <div className="relative w-14 h-14">
         <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
         <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
@@ -55,18 +46,13 @@ function UploadingOverlay({ text, pct }: { text: string; pct: number }) {
           <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </div>
       </div>
-
-      {/* Cycling message */}
       <div key={text} className="animate-fade-in">
         <p className="text-sm font-semibold text-blue-700 leading-snug">{text}</p>
       </div>
-
-      {/* Progress bar */}
       <div className="w-full space-y-1.5">
         <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
           <div
@@ -80,14 +66,26 @@ function UploadingOverlay({ text, pct }: { text: string; pct: number }) {
   );
 }
 
+// Sync the full photo list to the backend so the DB stays accurate
+function syncPhotosToBackend(id: string, labelUrl: string, itemUrls: string[]) {
+  const allUrls = [labelUrl, ...itemUrls].filter(Boolean);
+  updateListing(id, { imageUrls: allUrls }).catch(() => {
+    // Non-critical — photos still visible in UI; will re-sync on next upload
+  });
+}
+
 export default function Step1Photos() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const store = useListingStore();
 
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [labelUploading, setLabelUploading] = useState(false);
   const [itemsUploading, setItemsUploading] = useState(false);
+
+  // Track the label photo's original filename so we can detect duplicates
+  const [labelFileName, setLabelFileName] = useState<string | null>(null);
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +99,7 @@ export default function Step1Photos() {
     if (!files || !files[0] || !id) return;
     setUploadError(null);
     setLabelUploading(true);
+    setLabelFileName(files[0].name);
 
     const timeout = setTimeout(() => {
       setLabelUploading(false);
@@ -110,8 +109,11 @@ export default function Step1Photos() {
     try {
       const result = await uploadPhotos(id, [files[0]]);
       clearTimeout(timeout);
-      store.setLabelPhoto(result.urls[0]);
+      const newLabelUrl = result.urls[0];
+      store.setLabelPhoto(newLabelUrl);
       store.setImageJobStatus('QUEUED');
+      // Sync full list to backend
+      syncPhotosToBackend(id, newLabelUrl, store.itemPhotoUrls);
     } catch (err) {
       clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
@@ -123,6 +125,27 @@ export default function Step1Photos() {
   async function handleItemFiles(files: FileList | null) {
     if (!files || !files.length || !id) return;
     setUploadError(null);
+    setDuplicateWarning(null);
+
+    // Deduplicate: remove any file whose name matches the label photo's file name
+    const fileArray = Array.from(files);
+    let filtered = fileArray;
+    if (labelFileName) {
+      const dupes = fileArray.filter((f) => f.name === labelFileName);
+      if (dupes.length > 0) {
+        filtered = fileArray.filter((f) => f.name !== labelFileName);
+        setDuplicateWarning(
+          `${dupes.length} photo${dupes.length > 1 ? 's' : ''} removed — that image is already your label photo in box 1.`,
+        );
+      }
+    }
+
+    // Enforce 15-photo cap
+    const remaining = 15 - store.itemPhotoUrls.length;
+    const toUpload = filtered.slice(0, remaining);
+
+    if (!toUpload.length) return;
+
     setItemsUploading(true);
 
     const timeout = setTimeout(() => {
@@ -131,12 +154,13 @@ export default function Step1Photos() {
     }, UPLOAD_TIMEOUT_MS);
 
     try {
-      const remaining = 15 - store.itemPhotoUrls.length;
-      const fileArray = Array.from(files).slice(0, remaining);
-      const result = await uploadPhotos(id, fileArray);
+      const result = await uploadPhotos(id, toUpload);
       clearTimeout(timeout);
-      store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
+      const updatedItems = [...store.itemPhotoUrls, ...result.urls];
+      store.setItemPhotos(updatedItems);
       store.setImageJobStatus('QUEUED');
+      // Sync full list to backend
+      syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updatedItems);
     } catch (err) {
       clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
@@ -159,7 +183,15 @@ export default function Step1Photos() {
   }
 
   function removeItemPhoto(idx: number) {
-    store.setItemPhotos(store.itemPhotoUrls.filter((_, i) => i !== idx));
+    const updated = store.itemPhotoUrls.filter((_, i) => i !== idx);
+    store.setItemPhotos(updated);
+    if (id) syncPhotosToBackend(id, store.labelPhotoUrl ?? '', updated);
+  }
+
+  function removeLabelPhoto() {
+    store.setLabelPhoto('');
+    setLabelFileName(null);
+    if (id) syncPhotosToBackend(id, '', store.itemPhotoUrls);
   }
 
   function handleNext() {
@@ -194,7 +226,7 @@ export default function Step1Photos() {
             <div className="relative group rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
               <img src={store.labelPhotoUrl} alt="Label" className="w-full h-full object-cover" />
               <button
-                onClick={() => store.setLabelPhoto('')}
+                onClick={removeLabelPhoto}
                 className="absolute top-2 right-2 bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -250,7 +282,7 @@ export default function Step1Photos() {
           {store.itemPhotoUrls.length > 0 && !itemsUploading && (
             <div className="grid grid-cols-3 gap-2 mb-3">
               {store.itemPhotoUrls.map((url, idx) => (
-                <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
+                <div key={`${url}-${idx}`} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
                   <img src={url} alt={`Item ${idx + 1}`} className="w-full h-full object-cover" />
                   <button
                     onClick={() => removeItemPhoto(idx)}
@@ -309,6 +341,17 @@ export default function Step1Photos() {
         </div>
       </div>
 
+      {/* Duplicate warning */}
+      {duplicateWarning && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <p className="text-sm text-amber-700">{duplicateWarning}</p>
+        </div>
+      )}
+
+      {/* Upload error */}
       {uploadError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {uploadError}
