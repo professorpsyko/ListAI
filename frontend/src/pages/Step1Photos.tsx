@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
@@ -10,15 +10,21 @@ export default function Step1Photos() {
   const navigate = useNavigate();
   const store = useListingStore();
 
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
 
   // ── Label photo upload ──────────────────────────────────────────────────────
   const onDropLabel = useCallback(
     async (files: File[]) => {
       if (!files[0] || !id) return;
-      const result = await uploadPhotos(id, [files[0]]);
-      store.setLabelPhoto(result.urls[0]);
-      store.setImageJobStatus('QUEUED');
+      setUploadError(null);
+      try {
+        const result = await uploadPhotos(id, [files[0]]);
+        store.setLabelPhoto(result.urls[0]);
+        store.setImageJobStatus('QUEUED');
+      } catch (err) {
+        setUploadError(`Upload failed: ${(err as Error).message}. Check that Cloudinary env vars are set in Railway.`);
+      }
     },
     [id, store],
   );
@@ -33,11 +39,16 @@ export default function Step1Photos() {
   const onDropItems = useCallback(
     async (files: File[]) => {
       if (!files.length || !id) return;
-      const remaining = 15 - store.itemPhotoUrls.length;
-      const toUpload = files.slice(0, remaining);
-      const result = await uploadPhotos(id, toUpload);
-      store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
-      store.setImageJobStatus('QUEUED');
+      setUploadError(null);
+      try {
+        const remaining = 15 - store.itemPhotoUrls.length;
+        const toUpload = files.slice(0, remaining);
+        const result = await uploadPhotos(id, toUpload);
+        store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
+        store.setImageJobStatus('QUEUED');
+      } catch (err) {
+        setUploadError(`Upload failed: ${(err as Error).message}. Check that Cloudinary env vars are set in Railway.`);
+      }
     },
     [id, store],
   );
@@ -164,6 +175,12 @@ export default function Step1Photos() {
           )}
         </div>
       </div>
+
+      {uploadError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          {uploadError}
+        </div>
+      )}
 
       <div className="flex justify-end pt-4">
         <button
