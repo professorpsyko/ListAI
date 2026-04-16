@@ -9,10 +9,8 @@ import { identifyItem } from '../services/vision';
 import { generateTitle, generateDescription } from '../services/listing-ai';
 import { upsertListingMemory } from '../services/rag';
 import { publishListing } from '../services/ebay';
-import fs from 'fs';
-
 const router = Router();
-const upload = multer({ dest: '/tmp/listai-uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Create listing
 router.post('/', requireAuth, async (req: Request, res: Response) => {
@@ -98,12 +96,7 @@ router.post(
 
     // Upload all files to Cloudinary
     const uploadResults = await Promise.all(
-      files.map(async (file) => {
-        const result = await uploadToCloudinary(file.path);
-        // Clean up temp file
-        fs.unlink(file.path, () => {});
-        return result;
-      }),
+      files.map((file) => uploadToCloudinary(file.buffer)),
     );
 
     const newUrls = uploadResults.map((r) => r.url);

@@ -15,12 +15,23 @@ export interface ProcessedImage {
   error?: string;
 }
 
-export async function uploadToCloudinary(filePath: string): Promise<{ url: string; publicId: string }> {
-  const result = await cloudinary.uploader.upload(filePath, {
+export async function uploadToCloudinary(input: string | Buffer): Promise<{ url: string; publicId: string }> {
+  if (Buffer.isBuffer(input)) {
+    // Upload from in-memory buffer via data URI
+    const b64 = input.toString('base64');
+    const dataUri = `data:image/jpeg;base64,${b64}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: 'listai/originals',
+      resource_type: 'image',
+    });
+    return { url: result.secure_url, publicId: result.public_id };
+  }
+
+  // Legacy: upload from file path
+  const result = await cloudinary.uploader.upload(input, {
     folder: 'listai/originals',
     resource_type: 'image',
   });
-
   return { url: result.secure_url, publicId: result.public_id };
 }
 
