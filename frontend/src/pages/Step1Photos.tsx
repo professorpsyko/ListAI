@@ -84,9 +84,6 @@ export default function Step1Photos() {
   const [labelUploading, setLabelUploading] = useState(false);
   const [itemsUploading, setItemsUploading] = useState(false);
 
-  // Track the label photo's original filename so we can detect duplicates
-  const [labelFileName, setLabelFileName] = useState<string | null>(null);
-
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,7 +96,7 @@ export default function Step1Photos() {
     if (!files || !files[0] || !id) return;
     setUploadError(null);
     setLabelUploading(true);
-    setLabelFileName(files[0].name);
+    const labelMeta = { name: files[0].name, size: files[0].size };
 
     const timeout = setTimeout(() => {
       setLabelUploading(false);
@@ -110,10 +107,12 @@ export default function Step1Photos() {
       const result = await uploadPhotos(id, [files[0]]);
       clearTimeout(timeout);
       const newLabelUrl = result.urls[0];
-      store.setLabelPhoto(newLabelUrl);
+      // Persist label meta in store so duplicate detection survives remounts / back-nav
+      store.setLabelPhoto(newLabelUrl, labelMeta);
       store.setImageJobStatus('QUEUED');
-      // Sync full list to backend
-      syncPhotosToBackend(id, newLabelUrl, store.itemPhotoUrls);
+      // Also remove this file from item photos if it was previously added
+      const filteredItems = store.itemPhotoUrls; // can't compare URLs to file, rely on upload-time filter
+      syncPhotosToBackend(id, newLabelUrl, filteredItems);
     } catch (err) {
       clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
@@ -127,13 +126,14 @@ export default function Step1Photos() {
     setUploadError(null);
     setDuplicateWarning(null);
 
-    // Deduplicate: remove any file whose name matches the label photo's file name
+    // Deduplicate: remove any file that matches the current label photo (by name + size)
     const fileArray = Array.from(files);
     let filtered = fileArray;
-    if (labelFileName) {
-      const dupes = fileArray.filter((f) => f.name === labelFileName);
+    const meta = store.labelPhotoMeta;
+    if (meta) {
+      const dupes = fileArray.filter((f) => f.name === meta.name && f.size === meta.size);
       if (dupes.length > 0) {
-        filtered = fileArray.filter((f) => f.name !== labelFileName);
+        filtered = fileArray.filter((f) => !(f.name === meta.name && f.size === meta.size));
         setDuplicateWarning(
           `${dupes.length} photo${dupes.length > 1 ? 's' : ''} removed — that image is already your label photo in box 1.`,
         );
@@ -189,8 +189,8 @@ export default function Step1Photos() {
   }
 
   function removeLabelPhoto() {
-    store.setLabelPhoto('');
-    setLabelFileName(null);
+    // Pass null meta so labelPhotoMeta is cleared — duplicate detection resets too
+    store.setLabelPhoto('', null);
     if (id) syncPhotosToBackend(id, '', store.itemPhotoUrls);
   }
 

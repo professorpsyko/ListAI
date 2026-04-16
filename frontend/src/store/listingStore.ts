@@ -26,6 +26,8 @@ export interface ListingState {
 
   // Step 1 — Photos
   labelPhotoUrl: string | null;
+  /** Name + size of the label file, used to detect duplicates when uploading item photos */
+  labelPhotoMeta: { name: string; size: number } | null;
   itemPhotoUrls: string[];
   processedPhotoUrls: string[];
   imageJobStatus: 'PENDING' | 'QUEUED' | 'PROCESSING' | 'COMPLETE' | 'FAILED';
@@ -70,7 +72,7 @@ export interface ListingState {
 
   // Actions
   setListingId: (id: string) => void;
-  setLabelPhoto: (url: string) => void;
+  setLabelPhoto: (url: string, meta?: { name: string; size: number } | null) => void;
   setItemPhotos: (urls: string[]) => void;
   setProcessedPhotos: (urls: string[]) => void;
   setImageJobStatus: (s: ListingState['imageJobStatus']) => void;
@@ -102,6 +104,7 @@ export interface ListingState {
 const initialState = {
   listingId: null,
   labelPhotoUrl: null,
+  labelPhotoMeta: null,
   itemPhotoUrls: [],
   processedPhotoUrls: [],
   imageJobStatus: 'PENDING' as const,
@@ -134,7 +137,7 @@ export const useListingStore = create<ListingState>()(
     (set) => ({
       ...initialState,
       setListingId: (id) => set({ listingId: id }),
-      setLabelPhoto: (url) => set({ labelPhotoUrl: url }),
+      setLabelPhoto: (url, meta) => set({ labelPhotoUrl: url, labelPhotoMeta: meta ?? null }),
       setItemPhotos: (urls) => set({ itemPhotoUrls: urls }),
       setProcessedPhotos: (urls) => set({ processedPhotoUrls: urls }),
       setImageJobStatus: (s) => set({ imageJobStatus: s }),
