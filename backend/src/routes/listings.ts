@@ -114,11 +114,12 @@ router.post(
     const newUrls = uploadResults.map((r) => r.url);
     const newPublicIds = uploadResults.map((r) => r.publicId);
 
-    // Save only the newly-uploaded URLs. The frontend owns the full list and
-    // will PATCH imageUrls whenever the user adds or removes photos.
+    // Append new URLs to the DB so downstream steps (identify, AI) can read them.
+    // The frontend manages its own display list and will PATCH imageUrls to the
+    // correct set whenever photos are added or removed.
     await prisma.listing.update({
       where: { id: req.params.id },
-      data: { imageJobStatus: 'QUEUED' },
+      data: { imageUrls: [...listing.imageUrls, ...newUrls], imageJobStatus: 'QUEUED' },
     });
 
     // Fire-and-forget: queue image processing without blocking the response
