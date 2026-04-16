@@ -23,7 +23,7 @@ export async function generateTitle(userId: string, ctx: ListingContext): Promis
   const pastTitles = similar.map((s) => `- ${s.title}`).join('\n') || '(no past titles yet)';
 
   const response = await client.messages.create({
-    model: 'claude-3-7-sonnet-20250219',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 200,
     system: `You are an expert eBay seller who writes high-converting listing titles.
 eBay titles must be under 80 characters. Use specific keywords buyers search for.
@@ -48,7 +48,7 @@ Return ONLY the title, nothing else. Under 80 characters.`,
 
   const latency = Date.now() - start;
   console.log(
-    `[ListingAI/title] model=claude-3-7-sonnet-20250219 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
+    `[ListingAI/title] model=claude-sonnet-4-5-20250929 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
   );
 
   const title = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
@@ -62,7 +62,7 @@ export async function generateDescription(userId: string, ctx: ListingContext): 
   const pastDescriptions = similar.map((s) => `---\n${s.description}`).join('\n') || '(no past descriptions yet)';
 
   const response = await client.messages.create({
-    model: 'claude-3-7-sonnet-20250219',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
     system: `You are an expert eBay seller who writes clear, honest, buyer-friendly
 listing descriptions. Study the user's past description style carefully and match
@@ -87,7 +87,7 @@ ${pastDescriptions}`,
 
   const latency = Date.now() - start;
   console.log(
-    `[ListingAI/description] model=claude-3-7-sonnet-20250219 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
+    `[ListingAI/description] model=claude-sonnet-4-5-20250929 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
   );
 
   return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
@@ -108,7 +108,7 @@ export async function suggestShipping(ctx: {
   const start = Date.now();
 
   const response = await client.messages.create({
-    model: 'claude-3-7-sonnet-20250219',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 512,
     messages: [
       {
@@ -131,7 +131,7 @@ Respond ONLY in valid JSON:
 
   const latency = Date.now() - start;
   console.log(
-    `[ListingAI/shipping] model=claude-3-7-sonnet-20250219 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
+    `[ListingAI/shipping] model=claude-sonnet-4-5-20250929 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
   );
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';

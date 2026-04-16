@@ -109,14 +109,14 @@ Respond ONLY in valid JSON:
 }`;
 
   const response = await client.messages.create({
-    model: 'claude-3-7-sonnet-20250219',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
   });
 
   const latency = Date.now() - start;
   console.log(
-    `[Pricing] model=claude-3-7-sonnet-20250219 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
+    `[Pricing] model=claude-sonnet-4-5-20250929 input_tokens=${response.usage.input_tokens} output_tokens=${response.usage.output_tokens} latency=${latency}ms`,
   );
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
