@@ -4,47 +4,49 @@ import { useListingStore } from '../store/listingStore';
 import { uploadPhotos } from '../lib/api';
 import clsx from 'clsx';
 
-// Timed status messages shown while uploading
-const LABEL_MESSAGES = [
-  { delay: 0,    text: 'Sending photo to the cloud…' },
-  { delay: 1500, text: 'Uploading to image service…' },
-  { delay: 3000, text: 'Getting your label camera-ready…' },
-  { delay: 5000, text: 'Almost there — nearly listing-ready…' },
-  { delay: 8000, text: 'Just a moment more…' },
+// Each stage has a delay (ms after upload starts), a message, and a progress % for the bar
+const LABEL_STAGES = [
+  { delay: 0,     pct: 8,  text: 'Sending photo to the cloud…' },
+  { delay: 1500,  pct: 30, text: 'Uploading to image service…' },
+  { delay: 3500,  pct: 55, text: 'Getting your label camera-ready…' },
+  { delay: 6000,  pct: 75, text: 'Optimising for eBay's image standards…' },
+  { delay: 9000,  pct: 88, text: 'Almost listing-ready…' },
+  { delay: 13000, pct: 95, text: 'Wrapping up — nearly there…' },
 ];
 
-const ITEMS_MESSAGES = [
-  { delay: 0,    text: 'Sending shots to the cloud…' },
-  { delay: 1500, text: 'Uploading to image service…' },
-  { delay: 3000, text: 'Working some listing magic ✨' },
-  { delay: 5000, text: 'Polishing pixels for eBay buyers…' },
-  { delay: 7000, text: 'Optimising for crisp, click-worthy photos…' },
-  { delay: 10000, text: 'Almost ready to dazzle shoppers…' },
+const ITEMS_STAGES = [
+  { delay: 0,     pct: 5,  text: 'Sending shots to the cloud…' },
+  { delay: 1500,  pct: 22, text: 'Uploading to image service…' },
+  { delay: 3500,  pct: 42, text: 'Working some listing magic ✨' },
+  { delay: 6000,  pct: 60, text: 'Polishing pixels for eBay buyers…' },
+  { delay: 9000,  pct: 76, text: 'Optimising for crisp, click-worthy photos…' },
+  { delay: 13000, pct: 88, text: 'Almost ready to dazzle shoppers…' },
+  { delay: 18000, pct: 95, text: 'Final touches — hang tight…' },
 ];
 
-function useUploadStatus(uploading: boolean, messages: typeof LABEL_MESSAGES) {
-  const [msgIndex, setMsgIndex] = useState(0);
+const UPLOAD_TIMEOUT_MS = 45000; // show an error after 45 s
+
+function useUploadStatus(uploading: boolean, stages: typeof LABEL_STAGES) {
+  const [stageIndex, setStageIndex] = useState(0);
 
   useEffect(() => {
     if (!uploading) {
-      setMsgIndex(0);
+      setStageIndex(0);
       return;
     }
-
-    // Schedule each message at its delay relative to when uploading started
-    const timers = messages.map((m, i) =>
-      setTimeout(() => setMsgIndex(i), m.delay),
+    const timers = stages.map((s, i) =>
+      setTimeout(() => setStageIndex(i), s.delay),
     );
-
     return () => timers.forEach(clearTimeout);
   }, [uploading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return messages[msgIndex]?.text ?? messages[messages.length - 1].text;
+  const stage = stages[stageIndex] ?? stages[stages.length - 1];
+  return { text: stage.text, pct: stage.pct };
 }
 
-function UploadingOverlay({ message }: { message: string }) {
+function UploadingOverlay({ text, pct }: { text: string; pct: number }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 px-6 text-center">
+    <div className="flex flex-col items-center justify-center gap-5 px-8 text-center w-full">
       {/* Spinner */}
       <div className="relative w-14 h-14">
         <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
@@ -60,14 +62,19 @@ function UploadingOverlay({ message }: { message: string }) {
       </div>
 
       {/* Cycling message */}
-      <div key={message} className="animate-fade-in">
-        <p className="text-sm font-semibold text-blue-700 leading-snug">{message}</p>
-        <p className="text-xs text-blue-400 mt-1">This only takes a few seconds</p>
+      <div key={text} className="animate-fade-in">
+        <p className="text-sm font-semibold text-blue-700 leading-snug">{text}</p>
       </div>
 
-      {/* Pulsing progress bar */}
-      <div className="w-3/4 h-1.5 bg-blue-100 rounded-full overflow-hidden">
-        <div className="h-full bg-blue-400 rounded-full animate-progress-pulse" />
+      {/* Progress bar */}
+      <div className="w-full space-y-1.5">
+        <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-xs text-blue-400 text-right">{pct}%</p>
       </div>
     </div>
   );
@@ -85,8 +92,8 @@ export default function Step1Photos() {
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
 
-  const labelStatus = useUploadStatus(labelUploading, LABEL_MESSAGES);
-  const itemsStatus = useUploadStatus(itemsUploading, ITEMS_MESSAGES);
+  const labelStatus = useUploadStatus(labelUploading, LABEL_STAGES);
+  const itemsStatus = useUploadStatus(itemsUploading, ITEMS_STAGES);
 
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
 
@@ -94,11 +101,19 @@ export default function Step1Photos() {
     if (!files || !files[0] || !id) return;
     setUploadError(null);
     setLabelUploading(true);
+
+    const timeout = setTimeout(() => {
+      setLabelUploading(false);
+      setUploadError('Upload timed out — please check your connection and try again.');
+    }, UPLOAD_TIMEOUT_MS);
+
     try {
       const result = await uploadPhotos(id, [files[0]]);
+      clearTimeout(timeout);
       store.setLabelPhoto(result.urls[0]);
       store.setImageJobStatus('QUEUED');
     } catch (err) {
+      clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
     } finally {
       setLabelUploading(false);
@@ -109,13 +124,21 @@ export default function Step1Photos() {
     if (!files || !files.length || !id) return;
     setUploadError(null);
     setItemsUploading(true);
+
+    const timeout = setTimeout(() => {
+      setItemsUploading(false);
+      setUploadError('Upload timed out — please check your connection and try again.');
+    }, UPLOAD_TIMEOUT_MS);
+
     try {
       const remaining = 15 - store.itemPhotoUrls.length;
       const fileArray = Array.from(files).slice(0, remaining);
       const result = await uploadPhotos(id, fileArray);
+      clearTimeout(timeout);
       store.setItemPhotos([...store.itemPhotoUrls, ...result.urls]);
       store.setImageJobStatus('QUEUED');
     } catch (err) {
+      clearTimeout(timeout);
       setUploadError(`Upload failed: ${(err as Error).message}`);
     } finally {
       setItemsUploading(false);
@@ -192,7 +215,7 @@ export default function Step1Photos() {
               )}
             >
               {labelUploading ? (
-                <UploadingOverlay message={labelStatus} />
+                <UploadingOverlay text={labelStatus.text} pct={labelStatus.pct} />
               ) : (
                 <>
                   <div className="p-3 bg-white rounded-full shadow-sm mb-3">
@@ -265,7 +288,7 @@ export default function Step1Photos() {
               )}
             >
               {itemsUploading ? (
-                <UploadingOverlay message={itemsStatus} />
+                <UploadingOverlay text={itemsStatus.text} pct={itemsStatus.pct} />
               ) : (
                 <>
                   <div className="p-3 bg-white rounded-full shadow-sm mb-3">
