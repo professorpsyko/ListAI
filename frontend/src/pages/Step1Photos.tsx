@@ -1,8 +1,77 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { uploadPhotos } from '../lib/api';
 import clsx from 'clsx';
+
+// Timed status messages shown while uploading
+const LABEL_MESSAGES = [
+  { delay: 0,    text: 'Sending photo to the cloud…' },
+  { delay: 1500, text: 'Uploading to image service…' },
+  { delay: 3000, text: 'Getting your label camera-ready…' },
+  { delay: 5000, text: 'Almost there — nearly listing-ready…' },
+  { delay: 8000, text: 'Just a moment more…' },
+];
+
+const ITEMS_MESSAGES = [
+  { delay: 0,    text: 'Sending shots to the cloud…' },
+  { delay: 1500, text: 'Uploading to image service…' },
+  { delay: 3000, text: 'Working some listing magic ✨' },
+  { delay: 5000, text: 'Polishing pixels for eBay buyers…' },
+  { delay: 7000, text: 'Optimising for crisp, click-worthy photos…' },
+  { delay: 10000, text: 'Almost ready to dazzle shoppers…' },
+];
+
+function useUploadStatus(uploading: boolean, messages: typeof LABEL_MESSAGES) {
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  useEffect(() => {
+    if (!uploading) {
+      setMsgIndex(0);
+      return;
+    }
+
+    // Schedule each message at its delay relative to when uploading started
+    const timers = messages.map((m, i) =>
+      setTimeout(() => setMsgIndex(i), m.delay),
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [uploading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return messages[msgIndex]?.text ?? messages[messages.length - 1].text;
+}
+
+function UploadingOverlay({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 px-6 text-center">
+      {/* Spinner */}
+      <div className="relative w-14 h-14">
+        <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+        <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Cycling message */}
+      <div key={message} className="animate-fade-in">
+        <p className="text-sm font-semibold text-blue-700 leading-snug">{message}</p>
+        <p className="text-xs text-blue-400 mt-1">This only takes a few seconds</p>
+      </div>
+
+      {/* Pulsing progress bar */}
+      <div className="w-3/4 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-400 rounded-full animate-progress-pulse" />
+      </div>
+    </div>
+  );
+}
 
 export default function Step1Photos() {
   const { id } = useParams<{ id: string }>();
@@ -15,6 +84,9 @@ export default function Step1Photos() {
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
+
+  const labelStatus = useUploadStatus(labelUploading, LABEL_MESSAGES);
+  const itemsStatus = useUploadStatus(itemsUploading, ITEMS_MESSAGES);
 
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
 
@@ -50,7 +122,6 @@ export default function Step1Photos() {
     }
   }
 
-  // Drag and drop handlers
   function handleDrop(e: React.DragEvent, type: 'label' | 'items') {
     e.preventDefault();
     e.stopPropagation();
@@ -88,7 +159,6 @@ export default function Step1Photos() {
             <p className="text-sm text-gray-500">Take a close-up of any tag, sticker, or label on the item</p>
           </div>
 
-          {/* Hidden native file input */}
           <input
             ref={labelInputRef}
             type="file"
@@ -97,7 +167,7 @@ export default function Step1Photos() {
             onChange={(e) => handleLabelFiles(e.target.files)}
           />
 
-          {store.labelPhotoUrl ? (
+          {store.labelPhotoUrl && !labelUploading ? (
             <div className="relative group rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
               <img src={store.labelPhotoUrl} alt="Label" className="w-full h-full object-cover" />
               <button
@@ -111,19 +181,18 @@ export default function Step1Photos() {
             </div>
           ) : (
             <div
-              onClick={() => labelInputRef.current?.click()}
+              onClick={() => !labelUploading && labelInputRef.current?.click()}
               onDrop={(e) => handleDrop(e, 'label')}
               onDragOver={handleDragOver}
               className={clsx(
-                'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer transition-colors',
-                labelUploading ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
+                'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center transition-colors',
+                labelUploading
+                  ? 'border-blue-300 bg-blue-50 cursor-default'
+                  : 'border-gray-300 hover:border-blue-400 bg-gray-50 cursor-pointer',
               )}
             >
               {labelUploading ? (
-                <>
-                  <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
-                  <p className="text-sm text-blue-600 font-medium">Uploading…</p>
-                </>
+                <UploadingOverlay message={labelStatus} />
               ) : (
                 <>
                   <div className="p-3 bg-white rounded-full shadow-sm mb-3">
@@ -146,7 +215,6 @@ export default function Step1Photos() {
             <p className="text-sm text-gray-500">2–15 photos — front, back, sides, any damage</p>
           </div>
 
-          {/* Hidden native file input */}
           <input
             ref={itemsInputRef}
             type="file"
@@ -156,7 +224,7 @@ export default function Step1Photos() {
             onChange={(e) => handleItemFiles(e.target.files)}
           />
 
-          {store.itemPhotoUrls.length > 0 && (
+          {store.itemPhotoUrls.length > 0 && !itemsUploading && (
             <div className="grid grid-cols-3 gap-2 mb-3">
               {store.itemPhotoUrls.map((url, idx) => (
                 <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
@@ -184,21 +252,20 @@ export default function Step1Photos() {
             </div>
           )}
 
-          {store.itemPhotoUrls.length === 0 && (
+          {(store.itemPhotoUrls.length === 0 || itemsUploading) && (
             <div
-              onClick={() => itemsInputRef.current?.click()}
+              onClick={() => !itemsUploading && itemsInputRef.current?.click()}
               onDrop={(e) => handleDrop(e, 'items')}
               onDragOver={handleDragOver}
               className={clsx(
-                'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer transition-colors',
-                itemsUploading ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 bg-gray-50',
+                'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center transition-colors',
+                itemsUploading
+                  ? 'border-blue-300 bg-blue-50 cursor-default'
+                  : 'border-gray-300 hover:border-blue-400 bg-gray-50 cursor-pointer',
               )}
             >
               {itemsUploading ? (
-                <>
-                  <div className="w-8 h-8 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
-                  <p className="text-sm text-blue-600 font-medium">Uploading…</p>
-                </>
+                <UploadingOverlay message={itemsStatus} />
               ) : (
                 <>
                   <div className="p-3 bg-white rounded-full shadow-sm mb-3">
@@ -213,7 +280,7 @@ export default function Step1Photos() {
             </div>
           )}
 
-          {store.itemPhotoUrls.length > 0 && store.itemPhotoUrls.length < 2 && (
+          {store.itemPhotoUrls.length > 0 && store.itemPhotoUrls.length < 2 && !itemsUploading && (
             <p className="text-sm text-amber-600">Add at least one more photo</p>
           )}
         </div>
