@@ -48,6 +48,23 @@ app.use('/api/users', usersRouter);
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// Claude API connectivity test — hit /api/test-claude to verify key + credits
+app.get('/api/test-claude', async (_req, res) => {
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 32,
+      messages: [{ role: 'user', content: 'Reply with just the word WORKING.' }],
+    });
+    const text = response.content[0].type === 'text' ? response.content[0].text : '?';
+    res.json({ ok: true, response: text, keyPrefix: config.ANTHROPIC_API_KEY.slice(0, 12) + '...' });
+  } catch (err) {
+    res.json({ ok: false, error: err instanceof Error ? err.message : String(err), keyPrefix: config.ANTHROPIC_API_KEY.slice(0, 12) + '...' });
+  }
+});
+
 // Error handler (must be last)
 app.use(errorHandler);
 
