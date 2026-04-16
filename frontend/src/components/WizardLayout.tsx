@@ -57,8 +57,8 @@ export default function WizardLayout() {
       {/* Top nav */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
-          <Link to="/dashboard" className="font-bold text-lg text-blue-600 tracking-tight">
-            Speedlist
+          <Link to="/dashboard" className="font-bold text-lg tracking-tight">
+            <span className="text-gray-900">ListSamur</span><span className="text-blue-500">ai</span>
           </Link>
 
           {/* Step progress */}

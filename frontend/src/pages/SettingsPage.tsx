@@ -50,7 +50,9 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-6 flex items-center justify-between h-14">
-          <Link to="/dashboard" className="font-bold text-lg text-blue-600 tracking-tight">Speedlist</Link>
+          <Link to="/dashboard" className="font-bold text-lg tracking-tight">
+            <span className="text-gray-900">ListSamur</span><span className="text-blue-500">ai</span>
+          </Link>
           <div className="flex items-center gap-3">
             <span className="text-gray-500 text-sm">Settings</span>
             <UserButton afterSignOutUrl="/sign-in" />
@@ -121,7 +123,7 @@ export default function SettingsPage() {
         <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
           <h2 className="font-semibold text-gray-800 text-lg">Style memory</h2>
           <p className="text-sm text-gray-600">
-            Speedlist has learned from <strong>{me?.memoryCount ?? 0}</strong> of your past listings.
+            ListSamurai has learned from <strong>{me?.memoryCount ?? 0}</strong> of your past listings.
           </p>
 
           <div className="space-y-3">
