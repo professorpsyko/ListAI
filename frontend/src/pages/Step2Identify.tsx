@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { identifyItem, retryIdentify, triggerPriceResearch } from '../lib/api';
@@ -21,6 +21,7 @@ export default function Step2Identify() {
   const [retryCount, setRetryCount] = useState(0);
   const [diffNote, setDiffNote] = useState('');
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSerialSearch, setIsSerialSearch] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [usingPin, setUsingPin] = useState(false);
 
@@ -32,12 +33,19 @@ export default function Step2Identify() {
 
   /**
    * Serial number state when Claude returns null:
-   *   undefined = user has not yet interacted (blocks confirm)
+   *   undefined = user has not yet interacted (blocks confirm + "look off")
    *   null      = user confirmed "no serial on this item"
-   *   string    = user typed a serial number
+   *   string    = user typed a serial and it was used for a re-search
    */
   const [userSerial, setUserSerial] = useState<string | null | undefined>(undefined);
   const [serialDraft, setSerialDraft] = useState('');
+
+  /**
+   * When a serial-triggered re-search completes, if Claude still returns
+   * serialNumber: null, we restore the user-entered value from this ref
+   * (rather than resetting userSerial to undefined).
+   */
+  const pendingSerialRef = useRef<string | null>(null);
 
   // Manual form state
   const [manualIdentification, setManualIdentification] = useState('');
@@ -48,11 +56,24 @@ export default function Step2Identify() {
 
   const { identification, identificationStatus } = store;
 
-  // Reset serial + card selection whenever a new identification arrives
+  // Reset serial + card selection whenever a new identification arrives.
+  // If a serial search just completed and Claude still doesn't have a serial,
+  // restore the user-entered value so the user doesn't have to re-type.
   useEffect(() => {
-    setUserSerial(undefined);
-    setSerialDraft('');
     setSelectedAltIndex(null);
+    if (pendingSerialRef.current !== null) {
+      const pending = pendingSerialRef.current;
+      pendingSerialRef.current = null;
+      if (!identification?.serialNumber) {
+        // Claude still didn't find a serial — keep what the user typed
+        setUserSerial(pending);
+      }
+      // If Claude found it now, claudeSerial is non-null so we don't need userSerial
+      setSerialDraft('');
+    } else {
+      setUserSerial(undefined);
+      setSerialDraft('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identification?.identification]);
 
@@ -79,6 +100,38 @@ export default function Step2Identify() {
       store.setIdentificationStatus(result.error ? 'error' : 'done');
     } catch {
       store.setIdentificationStatus('error');
+    }
+  }
+
+  /**
+   * Called when user confirms a serial number they typed.
+   * Automatically re-runs identification with the serial as context —
+   * serial numbers often nail the exact variant so this search runs first
+   * before the user can use "Something look off?".
+   */
+  async function handleSerialConfirm(serial: string) {
+    if (!id || !serial.trim()) return;
+    const trimmed = serial.trim();
+    pendingSerialRef.current = trimmed;
+    setIsRetrying(true);
+    setIsSerialSearch(true);
+    try {
+      const result = await retryIdentify(
+        id,
+        `The serial number on this item is: "${trimmed}". Use this to precisely identify the exact model, year, colorway, and variant.`,
+      );
+      store.setIdentification(result);
+      store.setIdentificationStatus(result.error ? 'error' : 'done');
+      setRetryCount(0);
+      setDiffNote('');
+    } catch {
+      store.setIdentificationStatus('error');
+      // Fallback: save what they typed even if search failed
+      pendingSerialRef.current = null;
+      setUserSerial(trimmed);
+    } finally {
+      setIsRetrying(false);
+      setIsSerialSearch(false);
     }
   }
 
@@ -169,8 +222,18 @@ export default function Step2Identify() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-600 font-medium">{isRetrying ? 'Searching with your context...' : 'Analyzing your photos...'}</p>
-        <p className="text-sm text-gray-400">Claude is identifying your item</p>
+        <p className="text-gray-600 font-medium">
+          {isSerialSearch
+            ? 'Re-identifying with serial number...'
+            : isRetrying
+              ? 'Searching with your context...'
+              : 'Analyzing your photos...'}
+        </p>
+        <p className="text-sm text-gray-400">
+          {isSerialSearch
+            ? 'Serial numbers help Claude pinpoint the exact variant'
+            : 'Claude is identifying your item'}
+        </p>
       </div>
     );
   }
@@ -240,23 +303,16 @@ export default function Step2Identify() {
     const researchLinks = identification.researchLinks ?? [];
 
     // ── Derived display values based on which card is selected ──────────────
-    /** Name shown in the top (main) card */
     const mainDisplayName =
       selectedAltIndex !== null
         ? (baseAlts[selectedAltIndex]?.identification ?? identification.identification)
         : identification.identification;
 
-    /** Confidence shown in the top card */
     const mainDisplayConfidence =
       selectedAltIndex !== null
         ? (baseAlts[selectedAltIndex]?.confidence ?? identification.confidence)
         : identification.confidence;
 
-    /**
-     * What appears in the "Other possibilities" list.
-     * When an alt is selected: original identification floats up as an option,
-     * and the selected alt is removed from the list.
-     */
     const displayAlts: DisplayAlt[] =
       selectedAltIndex !== null
         ? [
@@ -268,7 +324,6 @@ export default function Step2Identify() {
         : baseAlts.map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }));
 
     function handleAltClick(alt: DisplayAlt) {
-      // null means "swap back to original"
       setSelectedAltIndex(alt.originalAltIndex);
     }
 
@@ -276,10 +331,11 @@ export default function Step2Identify() {
       return c >= 80 ? 'bg-green-100 text-green-700' : c >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500';
     }
 
-    // Serial is a physical property of the item, independent of which card is selected
     const claudeSerial = identification.serialNumber;
-    /** Whether the user has resolved the serial prompt (required when Claude returned null) */
+    /** True once the user has dealt with the serial prompt (or Claude found one) */
     const serialResolved = claudeSerial !== null || userSerial !== undefined;
+    /** Right column is locked until serial is confirmed */
+    const lookOffLocked = claudeSerial === null && userSerial === undefined;
 
     return (
       <div className="space-y-5 max-w-4xl">
@@ -303,7 +359,7 @@ export default function Step2Identify() {
           </div>
         )}
 
-        {/* ── Two-column layout: left = cards, right = look off ── */}
+        {/* ── Two-column layout: left = cards, right = label photo + look off ── */}
         <div className="grid grid-cols-5 gap-4 items-start">
 
           {/* LEFT: main card + alternatives */}
@@ -317,7 +373,8 @@ export default function Step2Identify() {
                   {mainDisplayConfidence}%
                 </span>
               </div>
-              {/* Brand / Model / Category — always from original identification */}
+
+              {/* Brand / Model / Category */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
                 {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
                 {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
@@ -326,7 +383,6 @@ export default function Step2Identify() {
 
               {/* Serial number section */}
               {claudeSerial !== null ? (
-                /* Claude found a serial — show it */
                 <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg text-sm bg-blue-50 border border-blue-100">
                   <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -340,31 +396,31 @@ export default function Step2Identify() {
                   </div>
                 </div>
               ) : userSerial === undefined ? (
-                /* Claude found no serial — user must resolve */
+                /* Claude found no serial — user must resolve before proceeding */
                 <div className="mt-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-3 space-y-2">
                   <div className="flex items-center gap-1.5">
                     <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                     </svg>
-                    <p className="text-xs font-semibold text-amber-700">Serial number not detected — please check</p>
+                    <p className="text-xs font-semibold text-amber-700">Serial number not detected — check label photo &rarr;</p>
                   </div>
                   <input
                     value={serialDraft}
                     onChange={(e) => setSerialDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && serialDraft.trim()) setUserSerial(serialDraft.trim()); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && serialDraft.trim()) void handleSerialConfirm(serialDraft); }}
                     placeholder="Enter serial number from label..."
                     className="w-full border border-amber-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-400 focus:border-transparent"
                   />
                   <div className="flex gap-2">
                     <button
-                      onClick={() => { if (serialDraft.trim()) setUserSerial(serialDraft.trim()); }}
+                      onClick={() => { if (serialDraft.trim()) void handleSerialConfirm(serialDraft); }}
                       disabled={!serialDraft.trim()}
                       className={clsx(
                         'flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors',
                         serialDraft.trim() ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-amber-200 text-amber-400 cursor-not-allowed',
                       )}
                     >
-                      Confirm serial
+                      Confirm &amp; re-search
                     </button>
                     <button
                       onClick={() => setUserSerial(null)}
@@ -375,7 +431,7 @@ export default function Step2Identify() {
                   </div>
                 </div>
               ) : (
-                /* User has resolved the serial prompt */
+                /* User has resolved the serial */
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-50 border border-gray-200">
                   <svg className="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -423,41 +479,70 @@ export default function Step2Identify() {
             )}
           </div>
 
-          {/* RIGHT: Something look off? */}
-          <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-4 space-y-3 sticky top-4">
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
-              <p className="text-xs text-gray-400 mt-0.5">Describe what is different and we will search again.</p>
-            </div>
-            <textarea
-              value={diffNote}
-              onChange={(e) => setDiffNote(e.target.value)}
-              rows={4}
-              placeholder="e.g. The colorway is red/black. Tag says model XJ-400."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <div className="space-y-2">
-              <button
-                onClick={handleSearchWithContext}
-                disabled={!diffNote.trim()}
-                className={clsx(
-                  'w-full py-2 rounded-lg text-sm font-semibold transition-colors',
-                  diffNote.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+          {/* RIGHT: label photo + Something look off? */}
+          <div className="col-span-2 space-y-3 sticky top-4">
+
+            {/* Label photo */}
+            {store.labelPhotoUrl && (
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <div className="px-3 pt-3 pb-1.5 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5l8 8-7 7-8-8V3z" />
+                  </svg>
+                  <p className="text-xs font-semibold text-gray-500">Label photo</p>
+                </div>
+                <img
+                  src={store.labelPhotoUrl}
+                  alt="Label"
+                  className="w-full object-contain max-h-52 bg-gray-50"
+                />
+                <p className="px-3 py-2 text-xs text-gray-400">Compare with serial / model detected above</p>
+              </div>
+            )}
+
+            {/* Something look off? */}
+            <div className={clsx(
+              'bg-white border rounded-2xl p-4 space-y-3 transition-opacity',
+              lookOffLocked ? 'border-gray-100 opacity-50 pointer-events-none select-none' : 'border-gray-200',
+            )}>
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
+                {lookOffLocked ? (
+                  <p className="text-xs text-amber-600 mt-0.5 font-medium">Confirm the serial number first — it helps AI find the exact item</p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-0.5">Describe what is different and we will search again.</p>
                 )}
-              >
-                Search with this context
-              </button>
-              {retryCount >= 2 && (
+              </div>
+              <textarea
+                value={diffNote}
+                onChange={(e) => setDiffNote(e.target.value)}
+                rows={4}
+                placeholder="e.g. The colorway is red/black. Tag says model XJ-400."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div className="space-y-2">
                 <button
-                  onClick={prefillManual}
-                  className="w-full py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-colors"
+                  onClick={handleSearchWithContext}
+                  disabled={!diffNote.trim()}
+                  className={clsx(
+                    'w-full py-2 rounded-lg text-sm font-semibold transition-colors',
+                    diffNote.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                  )}
                 >
-                  Identify it myself
+                  Search with this context
                 </button>
-              )}
-              {retryCount > 0 && retryCount < 2 && (
-                <p className="text-xs text-center text-gray-400">{2 - retryCount} more search{2 - retryCount !== 1 ? 'es' : ''} before manual option</p>
-              )}
+                {retryCount >= 2 && (
+                  <button
+                    onClick={prefillManual}
+                    className="w-full py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-colors"
+                  >
+                    Identify it myself
+                  </button>
+                )}
+                {retryCount > 0 && retryCount < 2 && (
+                  <p className="text-xs text-center text-gray-400">{2 - retryCount} more search{2 - retryCount !== 1 ? 'es' : ''} before manual option</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -510,7 +595,7 @@ export default function Step2Identify() {
           )}
         >
           {!serialResolved
-            ? 'Enter or confirm serial number above to continue'
+            ? 'Confirm the serial number above to continue'
             : selectedAltIndex !== null
               ? `Use "${baseAlts[selectedAltIndex]?.identification}" \u2192`
               : "Yes, that's it \u2192"}
