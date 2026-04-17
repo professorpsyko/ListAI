@@ -95,6 +95,8 @@ export default function Step1Photos() {
   const [labelUploading, setLabelUploading] = useState(false);
   const [itemsUploading, setItemsUploading] = useState(false);
   const [reverseDupeWarning, setReverseDupeWarning] = useState<string | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const itemsInputRef = useRef<HTMLInputElement>(null);
@@ -231,6 +233,39 @@ export default function Step1Photos() {
     if (id) syncPhotosToBackend(id, '', store.itemPhotoUrls);
   }
 
+  function handlePhotoDragStart(idx: number) {
+    setDragIndex(idx);
+  }
+
+  function handlePhotoDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    setDragOverIndex(idx);
+  }
+
+  function handlePhotoDrop(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === idx) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const newUrls = [...store.itemPhotoUrls];
+    const newMetas = [...store.itemPhotoMetas];
+    const [url] = newUrls.splice(dragIndex, 1);
+    const [meta] = newMetas.splice(dragIndex, 1);
+    newUrls.splice(idx, 0, url);
+    newMetas.splice(idx, 0, meta);
+    store.setItemPhotos(newUrls, newMetas);
+    if (id) syncPhotosToBackend(id, store.labelPhotoUrl ?? '', newUrls);
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }
+
+  function handlePhotoDragEnd() {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }
+
   function handleNext() {
     store.setCurrentStep(2);
     navigate(`/listing/${id}/step/2`);
@@ -317,31 +352,69 @@ export default function Step1Photos() {
           />
 
           {store.itemPhotoUrls.length > 0 && !itemsUploading && (
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {store.itemPhotoUrls.map((url, idx) => (
-                <div key={`${url}-${idx}`} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
-                  <img src={url} alt={`Item ${idx + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => removeItemPhoto(idx)}
-                    className="absolute top-1 right-1 bg-white rounded-full p-0.5 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {store.itemPhotoUrls.map((url, idx) => (
+                  <div
+                    key={`${url}-${idx}`}
+                    draggable
+                    onDragStart={() => handlePhotoDragStart(idx)}
+                    onDragOver={(e) => handlePhotoDragOver(e, idx)}
+                    onDrop={(e) => handlePhotoDrop(e, idx)}
+                    onDragEnd={handlePhotoDragEnd}
+                    className={clsx(
+                      'relative group aspect-square rounded-lg overflow-hidden border transition-all cursor-grab active:cursor-grabbing',
+                      dragOverIndex === idx && dragIndex !== idx
+                        ? 'border-blue-400 ring-2 ring-blue-300 scale-95'
+                        : dragIndex === idx
+                        ? 'border-blue-300 opacity-50'
+                        : 'border-gray-200',
+                    )}
                   >
-                    <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <img src={url} alt={`Item ${idx + 1}`} className="w-full h-full object-cover" />
+
+                    {/* Main photo badge on slot 1 */}
+                    {idx === 0 && (
+                      <div className="absolute top-1.5 left-1.5 bg-blue-600 text-white text-xs font-semibold px-1.5 py-0.5 rounded shadow">
+                        Cover
+                      </div>
+                    )}
+
+                    {/* Drag handle indicator */}
+                    <div className="absolute bottom-1 left-1 opacity-0 group-hover:opacity-60 transition-opacity">
+                      <svg className="w-4 h-4 text-white drop-shadow" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
+                      </svg>
+                    </div>
+
+                    <button
+                      onClick={() => removeItemPhoto(idx)}
+                      className="absolute top-1 right-1 bg-white rounded-full p-0.5 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                {store.itemPhotoUrls.length < 15 && (
+                  <div
+                    onClick={() => itemsInputRef.current?.click()}
+                    className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 flex items-center justify-center cursor-pointer"
+                  >
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                  </button>
-                </div>
-              ))}
-              {store.itemPhotoUrls.length < 15 && (
-                <div
-                  onClick={() => itemsInputRef.current?.click()}
-                  className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 flex items-center justify-center cursor-pointer"
-                >
-                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <span><strong className="text-blue-500">Cover</strong> photo (slot 1) is what shoppers see in search results — drag to reorder</span>
+              </p>
+            </>
           )}
 
           {(store.itemPhotoUrls.length === 0 || itemsUploading) && (

@@ -227,68 +227,119 @@ export default function Step2Identify() {
           </div>
         )}
 
-        {/* Identification cards */}
-        <div className="grid grid-cols-5 gap-3 items-start">
-          {/* Main card */}
-          <div className="col-span-3">
-            <button
-              onClick={() => setSelectedAltIndex(null)}
-              className={clsx(
-                'w-full text-left p-5 rounded-2xl border-2 transition-all',
-                selectedAltIndex === null ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
-              )}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-base font-semibold text-gray-900 leading-snug pr-2">{identification.identification}</h3>
-                <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(identification.confidence))}>
-                  {identification.confidence}%
-                </span>
-              </div>
-              <div className="space-y-1 text-sm text-gray-600">
-                {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
-                {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
-                {identification.ebayCategory && <div><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
-                {identification.serialNumber && (
-                  <div>
-                    <span className="font-medium text-gray-800">Serial:</span>{' '}
-                    <code className="bg-gray-100 px-1.5 py-0.5 rounded">{identification.serialNumber}</code>
-                  </div>
-                )}
-                {identification.serialDecoding && (
-                  <div className="mt-1 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1">
-                    <span className="font-medium">Serial decodes to:</span> {identification.serialDecoding}
-                  </div>
-                )}
-              </div>
-            </button>
-          </div>
-
-          {/* Alternatives */}
-          {alternatives.length > 0 && (
-            <div className="col-span-2 space-y-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Other possibilities</p>
-              {alternatives.map((alt, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedAltIndex(i)}
-                  className={clsx(
-                    'w-full text-left p-3 rounded-xl border-2 transition-all',
-                    selectedAltIndex === i ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-800 leading-snug">{alt.identification}</p>
-                    <span className={clsx('flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium', confidenceBadgeClass(alt.confidence))}>
-                      {alt.confidence}%
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
+        {/* Main identification card — full width */}
+        <div
+          onClick={() => setSelectedAltIndex(null)}
+          className={clsx(
+            'w-full text-left p-5 rounded-2xl border-2 transition-all cursor-pointer',
+            selectedAltIndex === null ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
           )}
+        >
+          <div className="flex items-start justify-between mb-3">
+            <h3 className="text-lg font-semibold text-gray-900 leading-snug pr-2">{identification.identification}</h3>
+            <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(identification.confidence))}>
+              {identification.confidence}%
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
+            {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
+            {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
+            {identification.ebayCategory && <div className="col-span-2"><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
+          </div>
+          {/* Serial number — always shown prominently */}
+          <div className={clsx(
+            'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
+            identification.serialNumber ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100',
+          )}>
+            <svg className={clsx('w-4 h-4 flex-shrink-0', identification.serialNumber ? 'text-blue-500' : 'text-gray-300')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+            </svg>
+            {identification.serialNumber ? (
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-blue-700">Serial:</span>{' '}
+                <code className="font-mono text-blue-800">{identification.serialNumber}</code>
+                {identification.serialDecoding && (
+                  <p className="text-xs text-blue-600 mt-0.5">{identification.serialDecoding}</p>
+                )}
+              </div>
+            ) : (
+              <span className="text-gray-400">No serial number detected in photos</span>
+            )}
+          </div>
         </div>
 
-        {/* Research section — description + source links */}
+        {/* Two-column row: alternatives left, "something look off?" right */}
+        <div className="grid grid-cols-5 gap-4 items-start">
+          {/* Alternatives */}
+          <div className="col-span-3 space-y-2">
+            {alternatives.length > 0 ? (
+              <>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other possibilities</p>
+                {alternatives.map((alt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedAltIndex(i)}
+                    className={clsx(
+                      'w-full text-left p-3 rounded-xl border-2 transition-all',
+                      selectedAltIndex === i ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-800 leading-snug">{alt.identification}</p>
+                      <span className={clsx('flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium', confidenceBadgeClass(alt.confidence))}>
+                        {alt.confidence}%
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <div className="h-full flex items-center">
+                <p className="text-sm text-gray-400 italic">No alternative identifications</p>
+              </div>
+            )}
+          </div>
+
+          {/* Something look off? */}
+          <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
+              <p className="text-xs text-gray-400 mt-0.5">Describe what is different and we will search again.</p>
+            </div>
+            <textarea
+              value={diffNote}
+              onChange={(e) => setDiffNote(e.target.value)}
+              rows={3}
+              placeholder="e.g. The colorway is red/black. Tag says model XJ-400."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <div className="space-y-2">
+              <button
+                onClick={handleSearchWithContext}
+                disabled={!diffNote.trim()}
+                className={clsx(
+                  'w-full py-2 rounded-lg text-sm font-semibold transition-colors',
+                  diffNote.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                )}
+              >
+                Search with this context
+              </button>
+              {retryCount >= 2 && (
+                <button
+                  onClick={prefillManual}
+                  className="w-full py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-colors"
+                >
+                  Identify it myself
+                </button>
+              )}
+              {retryCount > 0 && retryCount < 2 && (
+                <p className="text-xs text-center text-gray-400">{2 - retryCount} more search{2 - retryCount !== 1 ? 'es' : ''} before manual option</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Research section — full width below */}
         {(identification.researchDescription || researchLinks.length > 0) && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
@@ -297,20 +348,14 @@ export default function Step2Identify() {
               </svg>
               <h4 className="text-sm font-semibold text-gray-700">Research</h4>
             </div>
-
             {identification.researchDescription && (
               <p className="text-sm text-gray-600 leading-relaxed">{identification.researchDescription}</p>
             )}
-
             {researchLinks.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sources — click to verify</p>
                 {researchLinks.map((link, i) => (
-                  <a
-                    key={i}
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
                     className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
                   >
                     <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,44 +372,6 @@ export default function Step2Identify() {
             )}
           </div>
         )}
-
-        {/* "What's different?" box */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
-            <p className="text-xs text-gray-400 mt-0.5">Describe what is different between the recommendation and your actual item — we will search again with that context.</p>
-          </div>
-          <textarea
-            value={diffNote}
-            onChange={(e) => setDiffNote(e.target.value)}
-            rows={2}
-            placeholder="e.g. The colorway is actually red/black, not white. The model number on the tag says XJ-400."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSearchWithContext}
-              disabled={!diffNote.trim()}
-              className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-                diffNote.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed',
-              )}
-            >
-              Search with this context
-            </button>
-            {retryCount >= 2 && (
-              <button
-                onClick={prefillManual}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-colors"
-              >
-                Identify it myself
-              </button>
-            )}
-            {retryCount > 0 && retryCount < 2 && (
-              <span className="text-xs text-gray-400">{2 - retryCount} search{2 - retryCount !== 1 ? 'es' : ''} left before manual option</span>
-            )}
-          </div>
-        </div>
 
         {/* Confirm */}
         <button
