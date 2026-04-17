@@ -23,9 +23,32 @@ export default function DevPanel() {
   const store = useListingStore();
 
   const [open, setOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
   // Force re-render when pins change
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
+
+  function exportPins() {
+    const json = localStorage.getItem('listsamurai-dev-pins') ?? '{}';
+    navigator.clipboard.writeText(json).then(() => {
+      setCopyMsg('Copied!');
+      setTimeout(() => setCopyMsg(''), 2000);
+    });
+  }
+
+  function importPins() {
+    try {
+      JSON.parse(importText); // validate
+      localStorage.setItem('listsamurai-dev-pins', importText);
+      setImportText('');
+      setShowImport(false);
+      refresh();
+    } catch {
+      alert('Invalid JSON — paste the exported text exactly as copied.');
+    }
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -245,21 +268,59 @@ export default function DevPanel() {
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-2.5 border-t border-gray-700 flex items-center justify-between">
-            <span className="text-xs text-gray-500">
-              {Object.keys(pins).length} step{Object.keys(pins).length !== 1 ? 's' : ''} pinned
-            </span>
-            {Object.keys(pins).length > 0 && (
-              <button
-                onClick={() => {
-                  localStorage.removeItem('listsamurai-dev-pins');
-                  refresh();
-                }}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Clear all pins
-              </button>
+          <div className="border-t border-gray-700">
+            {/* Import box */}
+            {showImport && (
+              <div className="px-4 py-3 border-b border-gray-700 space-y-2">
+                <p className="text-xs text-gray-400">Paste exported pins JSON:</p>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  rows={3}
+                  className="w-full text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-gray-200 font-mono resize-none focus:outline-none focus:border-blue-500"
+                  placeholder='{"2":{"identification":...}}'
+                />
+                <div className="flex gap-2">
+                  <button onClick={importPins} disabled={!importText.trim()}
+                    className="flex-1 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded transition-colors disabled:opacity-40">
+                    Import
+                  </button>
+                  <button onClick={() => { setShowImport(false); setImportText(''); }}
+                    className="px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
+
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-xs text-gray-500">
+                {Object.keys(pins).length} step{Object.keys(pins).length !== 1 ? 's' : ''} pinned
+              </span>
+              <div className="flex items-center gap-2">
+                {/* Export */}
+                {Object.keys(pins).length > 0 && (
+                  <button onClick={exportPins}
+                    className="text-xs text-gray-400 hover:text-green-400 transition-colors">
+                    {copyMsg || 'Export'}
+                  </button>
+                )}
+                {/* Import */}
+                <button onClick={() => setShowImport((v) => !v)}
+                  className="text-xs text-gray-400 hover:text-blue-400 transition-colors">
+                  Import
+                </button>
+                {/* Clear */}
+                {Object.keys(pins).length > 0 && (
+                  <button
+                    onClick={() => { localStorage.removeItem('listsamurai-dev-pins'); refresh(); }}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
