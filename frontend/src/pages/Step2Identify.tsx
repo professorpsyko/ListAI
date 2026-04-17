@@ -6,6 +6,13 @@ import type { IdentificationResult } from '../store/listingStore';
 import { getDevPin, clearDevPin } from '../lib/devPins';
 import clsx from 'clsx';
 
+interface DisplayAlt {
+  identification: string;
+  confidence: number;
+  /** Index into the original alternativeIdentifications array, or null if this entry IS the original main identification */
+  originalAltIndex: number | null;
+}
+
 export default function Step2Identify() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -16,7 +23,21 @@ export default function Step2Identify() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [usingPin, setUsingPin] = useState(false);
+
+  /**
+   * Index into identification.alternativeIdentifications that is currently
+   * "swapped" to the main card slot. null = original identification is main.
+   */
   const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null);
+
+  /**
+   * Serial number state when Claude returns null:
+   *   undefined = user has not yet interacted (blocks confirm)
+   *   null      = user confirmed "no serial on this item"
+   *   string    = user typed a serial number
+   */
+  const [userSerial, setUserSerial] = useState<string | null | undefined>(undefined);
+  const [serialDraft, setSerialDraft] = useState('');
 
   // Manual form state
   const [manualIdentification, setManualIdentification] = useState('');
@@ -26,6 +47,14 @@ export default function Step2Identify() {
   const [manualSerial, setManualSerial] = useState('');
 
   const { identification, identificationStatus } = store;
+
+  // Reset serial + card selection whenever a new identification arrives
+  useEffect(() => {
+    setUserSerial(undefined);
+    setSerialDraft('');
+    setSelectedAltIndex(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identification?.identification]);
 
   useEffect(() => {
     const pin = getDevPin(2);
@@ -62,7 +91,6 @@ export default function Step2Identify() {
       store.setIdentificationStatus(result.error ? 'error' : 'done');
       setRetryCount((c) => c + 1);
       setDiffNote('');
-      setSelectedAltIndex(null);
     } catch {
       store.setIdentificationStatus('error');
     } finally {
@@ -72,23 +100,33 @@ export default function Step2Identify() {
 
   function handleConfirm() {
     if (!identification || !id) return;
-    const alternatives = identification.alternativeIdentifications ?? [];
 
-    if (selectedAltIndex !== null && alternatives[selectedAltIndex]) {
-      const alt = alternatives[selectedAltIndex];
-      store.setIdentification({
-        identification: alt.identification,
-        brand: '',
-        model: '',
-        serialNumber: null,
-        serialDecoding: null,
-        ebayCategory: '',
-        ebayCategoryId: null,
-        confidence: alt.confidence,
-        alternativeIdentifications: [],
-        researchDescription: '',
-        researchLinks: [],
-      });
+    // Effective serial: Claude-detected takes precedence, otherwise user input
+    const effectiveSerial =
+      identification.serialNumber !== null
+        ? identification.serialNumber
+        : (userSerial as string | null) ?? null;
+
+    if (selectedAltIndex !== null) {
+      const baseAlts = identification.alternativeIdentifications ?? [];
+      const alt = baseAlts[selectedAltIndex];
+      if (alt) {
+        store.setIdentification({
+          identification: alt.identification,
+          brand: identification.brand,
+          model: identification.model,
+          serialNumber: effectiveSerial,
+          serialDecoding: null,
+          ebayCategory: identification.ebayCategory,
+          ebayCategoryId: identification.ebayCategoryId,
+          confidence: alt.confidence,
+          alternativeIdentifications: [],
+          researchDescription: '',
+          researchLinks: [],
+        });
+      }
+    } else if (effectiveSerial !== identification.serialNumber) {
+      store.setIdentification({ ...identification, serialNumber: effectiveSerial });
     }
 
     triggerPriceResearch(id).catch(() => {});
@@ -131,7 +169,7 @@ export default function Step2Identify() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-600 font-medium">{isRetrying ? 'Searching with your context…' : 'Analyzing your photos…'}</p>
+        <p className="text-gray-600 font-medium">{isRetrying ? 'Searching with your context...' : 'Analyzing your photos...'}</p>
         <p className="text-sm text-gray-400">Claude is identifying your item</p>
       </div>
     );
@@ -198,15 +236,53 @@ export default function Step2Identify() {
 
   // ── Done ─────────────────────────────────────────────────────────────────
   if (identificationStatus === 'done' && identification && !identification.error) {
-    const alternatives = identification.alternativeIdentifications?.slice(0, 3) ?? [];
+    const baseAlts = identification.alternativeIdentifications?.slice(0, 3) ?? [];
     const researchLinks = identification.researchLinks ?? [];
+
+    // ── Derived display values based on which card is selected ──────────────
+    /** Name shown in the top (main) card */
+    const mainDisplayName =
+      selectedAltIndex !== null
+        ? (baseAlts[selectedAltIndex]?.identification ?? identification.identification)
+        : identification.identification;
+
+    /** Confidence shown in the top card */
+    const mainDisplayConfidence =
+      selectedAltIndex !== null
+        ? (baseAlts[selectedAltIndex]?.confidence ?? identification.confidence)
+        : identification.confidence;
+
+    /**
+     * What appears in the "Other possibilities" list.
+     * When an alt is selected: original identification floats up as an option,
+     * and the selected alt is removed from the list.
+     */
+    const displayAlts: DisplayAlt[] =
+      selectedAltIndex !== null
+        ? [
+            { identification: identification.identification, confidence: identification.confidence, originalAltIndex: null },
+            ...baseAlts
+              .map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }))
+              .filter((item) => item.originalAltIndex !== selectedAltIndex),
+          ]
+        : baseAlts.map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }));
+
+    function handleAltClick(alt: DisplayAlt) {
+      // null means "swap back to original"
+      setSelectedAltIndex(alt.originalAltIndex);
+    }
 
     function confidenceBadgeClass(c: number) {
       return c >= 80 ? 'bg-green-100 text-green-700' : c >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500';
     }
 
+    // Serial is a physical property of the item, independent of which card is selected
+    const claudeSerial = identification.serialNumber;
+    /** Whether the user has resolved the serial prompt (required when Claude returned null) */
+    const serialResolved = claudeSerial !== null || userSerial !== undefined;
+
     return (
-      <div className="space-y-5 max-w-2xl">
+      <div className="space-y-5 max-w-4xl">
         <h2 className="text-2xl font-bold text-gray-900">Is this your item?</h2>
 
         {/* Pinned data banner */}
@@ -227,62 +303,112 @@ export default function Step2Identify() {
           </div>
         )}
 
-        {/* Main identification card — full width */}
-        <div
-          onClick={() => setSelectedAltIndex(null)}
-          className={clsx(
-            'w-full text-left p-5 rounded-2xl border-2 transition-all cursor-pointer',
-            selectedAltIndex === null ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
-          )}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <h3 className="text-lg font-semibold text-gray-900 leading-snug pr-2">{identification.identification}</h3>
-            <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(identification.confidence))}>
-              {identification.confidence}%
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
-            {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
-            {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
-            {identification.ebayCategory && <div className="col-span-2"><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
-          </div>
-          {/* Serial number — always shown prominently */}
-          <div className={clsx(
-            'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
-            identification.serialNumber ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100',
-          )}>
-            <svg className={clsx('w-4 h-4 flex-shrink-0', identification.serialNumber ? 'text-blue-500' : 'text-gray-300')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-            </svg>
-            {identification.serialNumber ? (
-              <div className="flex-1 min-w-0">
-                <span className="font-medium text-blue-700">Serial:</span>{' '}
-                <code className="font-mono text-blue-800">{identification.serialNumber}</code>
-                {identification.serialDecoding && (
-                  <p className="text-xs text-blue-600 mt-0.5">{identification.serialDecoding}</p>
-                )}
-              </div>
-            ) : (
-              <span className="text-gray-400">No serial number detected in photos</span>
-            )}
-          </div>
-        </div>
-
-        {/* Two-column row: alternatives left, "something look off?" right */}
+        {/* ── Two-column layout: left = cards, right = look off ── */}
         <div className="grid grid-cols-5 gap-4 items-start">
-          {/* Alternatives */}
-          <div className="col-span-3 space-y-2">
-            {alternatives.length > 0 ? (
-              <>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other possibilities</p>
-                {alternatives.map((alt, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedAltIndex(i)}
-                    className={clsx(
-                      'w-full text-left p-3 rounded-xl border-2 transition-all',
-                      selectedAltIndex === i ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
+
+          {/* LEFT: main card + alternatives */}
+          <div className="col-span-3 space-y-3">
+
+            {/* Main identification card */}
+            <div className="w-full p-5 rounded-2xl border-2 border-blue-500 bg-white shadow-sm">
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 leading-snug pr-2">{mainDisplayName}</h3>
+                <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(mainDisplayConfidence))}>
+                  {mainDisplayConfidence}%
+                </span>
+              </div>
+              {/* Brand / Model / Category — always from original identification */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
+                {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
+                {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
+                {identification.ebayCategory && <div className="col-span-2"><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
+              </div>
+
+              {/* Serial number section */}
+              {claudeSerial !== null ? (
+                /* Claude found a serial — show it */
+                <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg text-sm bg-blue-50 border border-blue-100">
+                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium text-blue-700">Serial:</span>{' '}
+                    <code className="font-mono text-blue-800">{claudeSerial}</code>
+                    {identification.serialDecoding && (
+                      <p className="text-xs text-blue-600 mt-0.5">{identification.serialDecoding}</p>
                     )}
+                  </div>
+                </div>
+              ) : userSerial === undefined ? (
+                /* Claude found no serial — user must resolve */
+                <div className="mt-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <p className="text-xs font-semibold text-amber-700">Serial number not detected — please check</p>
+                  </div>
+                  <input
+                    value={serialDraft}
+                    onChange={(e) => setSerialDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && serialDraft.trim()) setUserSerial(serialDraft.trim()); }}
+                    placeholder="Enter serial number from label..."
+                    className="w-full border border-amber-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { if (serialDraft.trim()) setUserSerial(serialDraft.trim()); }}
+                      disabled={!serialDraft.trim()}
+                      className={clsx(
+                        'flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                        serialDraft.trim() ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-amber-200 text-amber-400 cursor-not-allowed',
+                      )}
+                    >
+                      Confirm serial
+                    </button>
+                    <button
+                      onClick={() => setUserSerial(null)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors"
+                    >
+                      No serial on this item
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* User has resolved the serial prompt */
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-50 border border-gray-200">
+                  <svg className="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    {userSerial ? (
+                      <>
+                        <span className="font-medium text-gray-700">Serial:</span>{' '}
+                        <code className="font-mono text-gray-800">{userSerial}</code>
+                      </>
+                    ) : (
+                      <span className="text-gray-500">No serial on this item</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setUserSerial(undefined); setSerialDraft(''); }}
+                    className="text-xs text-blue-500 hover:text-blue-700 underline flex-shrink-0"
+                  >
+                    change
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Alternatives */}
+            {displayAlts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other possibilities — tap to swap</p>
+                {displayAlts.map((alt) => (
+                  <button
+                    key={alt.originalAltIndex ?? 'original'}
+                    onClick={() => handleAltClick(alt)}
+                    className="w-full text-left p-3 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm transition-all"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-medium text-gray-800 leading-snug">{alt.identification}</p>
@@ -290,18 +416,15 @@ export default function Step2Identify() {
                         {alt.confidence}%
                       </span>
                     </div>
+                    <p className="text-xs text-blue-500 mt-1">Tap to use this instead</p>
                   </button>
                 ))}
-              </>
-            ) : (
-              <div className="h-full flex items-center">
-                <p className="text-sm text-gray-400 italic">No alternative identifications</p>
               </div>
             )}
           </div>
 
-          {/* Something look off? */}
-          <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+          {/* RIGHT: Something look off? */}
+          <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-4 space-y-3 sticky top-4">
             <div>
               <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
               <p className="text-xs text-gray-400 mt-0.5">Describe what is different and we will search again.</p>
@@ -309,7 +432,7 @@ export default function Step2Identify() {
             <textarea
               value={diffNote}
               onChange={(e) => setDiffNote(e.target.value)}
-              rows={3}
+              rows={4}
               placeholder="e.g. The colorway is red/black. Tag says model XJ-400."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -339,7 +462,7 @@ export default function Step2Identify() {
           </div>
         </div>
 
-        {/* Research section — full width below */}
+        {/* Research section — full width below both columns */}
         {(identification.researchDescription || researchLinks.length > 0) && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
@@ -354,20 +477,22 @@ export default function Step2Identify() {
             {researchLinks.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sources — click to verify</p>
-                {researchLinks.map((link, i) => (
-                  <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
-                  >
-                    <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 truncate">{link.title}</p>
-                      <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
-                      <p className="text-xs text-blue-500 truncate mt-0.5">{link.url}</p>
-                    </div>
-                  </a>
-                ))}
+                <div className="grid grid-cols-2 gap-2">
+                  {researchLinks.map((link, i) => (
+                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 truncate">{link.title}</p>
+                        <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
+                        <p className="text-xs text-blue-500 truncate mt-0.5">{link.url}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -376,11 +501,19 @@ export default function Step2Identify() {
         {/* Confirm */}
         <button
           onClick={handleConfirm}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+          disabled={!serialResolved}
+          className={clsx(
+            'w-full py-3 font-semibold rounded-xl transition-colors',
+            serialResolved
+              ? 'bg-blue-600 hover:bg-blue-700 text-white'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed',
+          )}
         >
-          {selectedAltIndex !== null
-            ? `Use "${alternatives[selectedAltIndex]?.identification}" \u2192`
-            : "Yes, that's it \u2192"}
+          {!serialResolved
+            ? 'Enter or confirm serial number above to continue'
+            : selectedAltIndex !== null
+              ? `Use "${baseAlts[selectedAltIndex]?.identification}" \u2192`
+              : "Yes, that's it \u2192"}
         </button>
       </div>
     );
