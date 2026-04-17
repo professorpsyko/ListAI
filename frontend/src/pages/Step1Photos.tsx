@@ -150,6 +150,11 @@ export default function Step1Photos() {
 
   async function handleItemFiles(files: FileList | null) {
     if (!files || !files.length || !id) return;
+    // Block if box 1 is still uploading — we can't reliably deduplicate mid-flight
+    if (labelUploading) {
+      setDuplicateWarning('Box 1 is still uploading — please wait a moment before adding item photos.');
+      return;
+    }
     setUploadError(null);
     setDuplicateWarning(null);
 
@@ -341,18 +346,29 @@ export default function Step1Photos() {
 
           {(store.itemPhotoUrls.length === 0 || itemsUploading) && (
             <div
-              onClick={() => !itemsUploading && itemsInputRef.current?.click()}
+              onClick={() => !itemsUploading && !labelUploading && itemsInputRef.current?.click()}
               onDrop={(e) => handleDrop(e, 'items')}
               onDragOver={handleDragOver}
               className={clsx(
                 'border-2 border-dashed rounded-xl aspect-square flex flex-col items-center justify-center transition-colors',
                 itemsUploading
                   ? 'border-blue-300 bg-blue-50 cursor-default'
+                  : labelUploading
+                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
                   : 'border-gray-300 hover:border-blue-400 bg-gray-50 cursor-pointer',
               )}
             >
               {itemsUploading ? (
                 <UploadingOverlay text={itemsStatus.text} pct={itemsStatus.pct} />
+              ) : labelUploading ? (
+                <>
+                  <div className="p-3 bg-white rounded-full shadow-sm mb-3 opacity-50">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-400">Waiting for box 1...</p>
+                </>
               ) : (
                 <>
                   <div className="p-3 bg-white rounded-full shadow-sm mb-3">
