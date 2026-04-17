@@ -10,6 +10,7 @@ export interface IdentificationResult {
   ebayCategoryId: string | null;
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
+  variants?: Array<{ type: string; options: string[] }>;
   error?: string;
 }
 

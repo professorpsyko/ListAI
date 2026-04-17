@@ -16,6 +16,7 @@ export interface IdentificationResult {
   ebayCategoryId: string | null;
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
+  variants?: Array<{ type: string; options: string[] }>;
 }
 
 interface VisionOptions {
@@ -91,6 +92,7 @@ Analyze these photos carefully. Your job is to:
 2. Find the serial number if visible in any photo
 3. Identify the best marketplace category that fits this item
 4. Return a confidence score from 0-100 for your identification
+5. List up to 2-3 meaningful variant types for the top identification (e.g. colorway, edition, size range, material, generation). Only include variants that are relevant and commonly affect resale value. Provide 3-5 options per type.
 
 Respond ONLY in this exact JSON format:
 {
@@ -104,6 +106,10 @@ Respond ONLY in this exact JSON format:
   "alternativeIdentifications": [
     {"identification": "Alternative guess 1", "confidence": 60},
     {"identification": "Alternative guess 2", "confidence": 40}
+  ],
+  "variants": [
+    {"type": "Colorway", "options": ["White/Black", "Triple White", "Black/White", "University Blue"]},
+    {"type": "Size Range", "options": ["Men's", "Women's", "Grade School", "Toddler"]}
   ]
 }`;
 
