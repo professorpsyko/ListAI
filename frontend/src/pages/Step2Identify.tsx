@@ -23,6 +23,7 @@ export default function Step2Identify() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSerialSearch, setIsSerialSearch] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [labelZoomed, setLabelZoomed] = useState(false);
   const [usingPin, setUsingPin] = useState(false);
 
   /**
@@ -482,22 +483,51 @@ export default function Step2Identify() {
           {/* RIGHT: label photo + Something look off? */}
           <div className="col-span-2 space-y-3 sticky top-4">
 
-            {/* Label photo */}
+            {/* Label photo — hover zooms into a fixed overlay so input focus is never stolen */}
             {store.labelPhotoUrl && (
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                <div className="px-3 pt-3 pb-1.5 flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5l8 8-7 7-8-8V3z" />
-                  </svg>
-                  <p className="text-xs font-semibold text-gray-500">Label photo</p>
+              <>
+                <div
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden cursor-zoom-in"
+                  onMouseEnter={() => setLabelZoomed(true)}
+                  onMouseLeave={() => setLabelZoomed(false)}
+                >
+                  <div className="px-3 pt-3 pb-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5l8 8-7 7-8-8V3z" />
+                      </svg>
+                      <p className="text-xs font-semibold text-gray-500">Label photo</p>
+                    </div>
+                    <p className="text-xs text-gray-400 italic">hover to zoom</p>
+                  </div>
+                  <img
+                    src={store.labelPhotoUrl}
+                    alt="Label"
+                    className="w-full object-contain max-h-52 bg-gray-50"
+                  />
+                  <p className="px-3 py-2 text-xs text-gray-400">Compare with serial / model detected above</p>
                 </div>
-                <img
-                  src={store.labelPhotoUrl}
-                  alt="Label"
-                  className="w-full object-contain max-h-52 bg-gray-50"
-                />
-                <p className="px-3 py-2 text-xs text-gray-400">Compare with serial / model detected above</p>
-              </div>
+
+                {/* Zoomed overlay — fixed so overflow:hidden on parent can't clip it.
+                    pointer-events-none means the input keeps focus even while hovering. */}
+                {labelZoomed && (
+                  <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center p-12">
+                    <div className="relative">
+                      <img
+                        src={store.labelPhotoUrl}
+                        alt="Label zoomed"
+                        className="max-w-2xl max-h-[80vh] w-auto object-contain rounded-2xl"
+                        style={{
+                          boxShadow: '0 30px 80px rgba(0,0,0,0.45), 0 0 0 4px white, 0 0 0 5px rgba(0,0,0,0.08)',
+                        }}
+                      />
+                      <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded-lg backdrop-blur-sm">
+                        Move mouse away to close
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Something look off? */}
