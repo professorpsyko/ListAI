@@ -6,11 +6,13 @@ export interface IdentificationResult {
   brand: string;
   model: string;
   serialNumber: string | null;
+  serialDecoding: string | null;
   ebayCategory: string;
   ebayCategoryId: string | null;
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
-  variants?: Array<{ type: string; options: string[] }>;
+  researchDescription?: string;
+  researchLinks?: Array<{ title: string; url: string; snippet: string }>;
   error?: string;
 }
 

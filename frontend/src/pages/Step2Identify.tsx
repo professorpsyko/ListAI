@@ -12,14 +12,11 @@ export default function Step2Identify() {
   const store = useListingStore();
 
   const [retryCount, setRetryCount] = useState(0);
-  const [userCorrection, setUserCorrection] = useState('');
+  const [diffNote, setDiffNote] = useState('');
+  const [isRetrying, setIsRetrying] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const [showRejectionInput, setShowRejectionInput] = useState(false);
   const [usingPin, setUsingPin] = useState(false);
-
-  // Selection state for the identification cards
-  const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null); // null = main
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({}); // type -> option
+  const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null);
 
   // Manual form state
   const [manualIdentification, setManualIdentification] = useState('');
@@ -31,7 +28,6 @@ export default function Step2Identify() {
   const { identification, identificationStatus } = store;
 
   useEffect(() => {
-    // Check for pinned identification data first
     const pin = getDevPin(2);
     if (pin && identificationStatus === 'idle') {
       store.setIdentification(pin.identification);
@@ -39,7 +35,6 @@ export default function Step2Identify() {
       setUsingPin(true);
       return;
     }
-    // Auto-trigger identification on mount if not already done
     if (identificationStatus === 'idle' && store.itemPhotoUrls.length > 0) {
       runIdentify();
     }
@@ -58,21 +53,20 @@ export default function Step2Identify() {
     }
   }
 
-  async function handleRetry() {
-    if (!id) return;
-    store.setIdentificationStatus('loading');
+  async function handleSearchWithContext() {
+    if (!id || !diffNote.trim()) return;
+    setIsRetrying(true);
     try {
-      const result: IdentificationResult = await retryIdentify(id, userCorrection || undefined);
+      const result: IdentificationResult = await retryIdentify(id, diffNote);
       store.setIdentification(result);
       store.setIdentificationStatus(result.error ? 'error' : 'done');
       setRetryCount((c) => c + 1);
-      setShowRejectionInput(false);
-      setUserCorrection('');
-      if (retryCount >= 1) {
-        // Second rejection — show manual entry option prominently
-      }
+      setDiffNote('');
+      setSelectedAltIndex(null);
     } catch {
       store.setIdentificationStatus('error');
+    } finally {
+      setIsRetrying(false);
     }
   }
 
@@ -80,30 +74,21 @@ export default function Step2Identify() {
     if (!identification || !id) return;
     const alternatives = identification.alternativeIdentifications ?? [];
 
-    // If an alternative is selected, update the store with it before proceeding
     if (selectedAltIndex !== null && alternatives[selectedAltIndex]) {
       const alt = alternatives[selectedAltIndex];
-      // Build a variant suffix from any selected variants
-      const variantSuffix = Object.values(selectedVariants).filter(Boolean).join(' ');
       store.setIdentification({
-        identification: variantSuffix ? `${alt.identification} ${variantSuffix}` : alt.identification,
+        identification: alt.identification,
         brand: '',
         model: '',
         serialNumber: null,
+        serialDecoding: null,
         ebayCategory: '',
         ebayCategoryId: null,
         confidence: alt.confidence,
         alternativeIdentifications: [],
+        researchDescription: '',
+        researchLinks: [],
       });
-    } else {
-      // Main selected — append any chosen variants to the identification name
-      const variantSuffix = Object.values(selectedVariants).filter(Boolean).join(' ');
-      if (variantSuffix) {
-        store.setIdentification({
-          ...identification,
-          identification: `${identification.identification} ${variantSuffix}`,
-        });
-      }
     }
 
     triggerPriceResearch(id).catch(() => {});
@@ -118,10 +103,13 @@ export default function Step2Identify() {
       brand: manualBrand,
       model: manualModel,
       serialNumber: manualSerial || null,
+      serialDecoding: null,
       ebayCategory: manualCategory,
       ebayCategoryId: null,
       confidence: 100,
       alternativeIdentifications: [],
+      researchDescription: '',
+      researchLinks: [],
     });
     store.setIdentificationStatus('done');
     setShowManual(false);
@@ -138,50 +126,51 @@ export default function Step2Identify() {
     setShowManual(true);
   }
 
-  if (identificationStatus === 'loading') {
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (identificationStatus === 'loading' || isRetrying) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-600 font-medium">Analyzing your photos…</p>
+        <p className="text-gray-600 font-medium">{isRetrying ? 'Searching with your context…' : 'Analyzing your photos…'}</p>
         <p className="text-sm text-gray-400">Claude is identifying your item</p>
       </div>
     );
   }
 
+  // ── Manual entry ─────────────────────────────────────────────────────────
   if (showManual) {
     return (
       <div className="space-y-6 max-w-lg">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Enter item details</h2>
-          <p className="text-gray-500 mt-1">Tell us about your item so we can price and list it.</p>
+          <h2 className="text-2xl font-bold text-gray-900">Identify it yourself</h2>
+          <p className="text-gray-500 mt-1">Fill in what you know — you can edit everything later too.</p>
         </div>
-
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Item name <span className="text-red-500">*</span></label>
             <input value={manualIdentification} onChange={(e) => setManualIdentification(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g. Apple MacBook Pro 14-inch M3" />
+              placeholder="e.g. Nike Air Force 1 Low White/Black" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
               <input value={manualBrand} onChange={(e) => setManualBrand(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Apple" />
+                placeholder="Nike" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
               <input value={manualModel} onChange={(e) => setManualModel(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="MacBook Pro M3" />
+                placeholder="Air Force 1 Low" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">eBay category</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <input value={manualCategory} onChange={(e) => setManualCategory(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Computers/Tablets & Networking" />
+              placeholder="Athletic Shoes" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Serial number</label>
@@ -190,7 +179,6 @@ export default function Step2Identify() {
               placeholder="Optional" />
           </div>
         </div>
-
         <div className="flex gap-3">
           <button onClick={() => setShowManual(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
             Back
@@ -201,26 +189,20 @@ export default function Step2Identify() {
             className={clsx('px-6 py-2 rounded-lg font-semibold text-white',
               manualIdentification ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed')}
           >
-            Confirm item
+            Use this identification
           </button>
         </div>
       </div>
     );
   }
 
+  // ── Done ─────────────────────────────────────────────────────────────────
   if (identificationStatus === 'done' && identification && !identification.error) {
     const alternatives = identification.alternativeIdentifications?.slice(0, 3) ?? [];
-    const variants = identification.variants ?? [];
+    const researchLinks = identification.researchLinks ?? [];
 
     function confidenceBadgeClass(c: number) {
       return c >= 80 ? 'bg-green-100 text-green-700' : c >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500';
-    }
-
-    function toggleVariant(type: string, option: string) {
-      setSelectedVariants((prev) => ({
-        ...prev,
-        [type]: prev[type] === option ? '' : option,
-      }));
     }
 
     return (
@@ -245,17 +227,15 @@ export default function Step2Identify() {
           </div>
         )}
 
-        {/* Cards row */}
+        {/* Identification cards */}
         <div className="grid grid-cols-5 gap-3 items-start">
-          {/* Left — main identification */}
+          {/* Main card */}
           <div className="col-span-3">
             <button
-              onClick={() => { setSelectedAltIndex(null); setSelectedVariants({}); }}
+              onClick={() => setSelectedAltIndex(null)}
               className={clsx(
                 'w-full text-left p-5 rounded-2xl border-2 transition-all',
-                selectedAltIndex === null
-                  ? 'border-blue-500 bg-white shadow-sm'
-                  : 'border-gray-200 bg-white hover:border-blue-300',
+                selectedAltIndex === null ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
               )}
             >
               <div className="flex items-start justify-between mb-3">
@@ -268,24 +248,32 @@ export default function Step2Identify() {
                 {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
                 {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
                 {identification.ebayCategory && <div><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
-                {identification.serialNumber && <div><span className="font-medium text-gray-800">Serial:</span> <code className="bg-gray-100 px-1.5 py-0.5 rounded">{identification.serialNumber}</code></div>}
+                {identification.serialNumber && (
+                  <div>
+                    <span className="font-medium text-gray-800">Serial:</span>{' '}
+                    <code className="bg-gray-100 px-1.5 py-0.5 rounded">{identification.serialNumber}</code>
+                  </div>
+                )}
+                {identification.serialDecoding && (
+                  <div className="mt-1 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1">
+                    <span className="font-medium">Serial decodes to:</span> {identification.serialDecoding}
+                  </div>
+                )}
               </div>
             </button>
           </div>
 
-          {/* Right — alternatives */}
+          {/* Alternatives */}
           {alternatives.length > 0 && (
             <div className="col-span-2 space-y-2">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Other possibilities</p>
               {alternatives.map((alt, i) => (
                 <button
                   key={i}
-                  onClick={() => { setSelectedAltIndex(i); setSelectedVariants({}); }}
+                  onClick={() => setSelectedAltIndex(i)}
                   className={clsx(
                     'w-full text-left p-3 rounded-xl border-2 transition-all',
-                    selectedAltIndex === i
-                      ? 'border-blue-500 bg-white shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-blue-300',
+                    selectedAltIndex === i ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300',
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -300,76 +288,98 @@ export default function Step2Identify() {
           )}
         </div>
 
-        {/* Research / Variants — only shown for the main identification */}
-        {variants.length > 0 && selectedAltIndex === null && (
+        {/* Research section — description + source links */}
+        {(identification.researchDescription || researchLinks.length > 0) && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <h4 className="text-sm font-semibold text-gray-700">Research — specify your variant <span className="font-normal text-gray-400">(optional)</span></h4>
+              <h4 className="text-sm font-semibold text-gray-700">Research</h4>
             </div>
-            {variants.map((v) => (
-              <div key={v.type} className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{v.type}</p>
-                <div className="flex flex-wrap gap-2">
-                  {v.options.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => toggleVariant(v.type, opt)}
-                      className={clsx(
-                        'px-3 py-1.5 rounded-lg text-sm font-medium border transition-all',
-                        selectedVariants[v.type] === opt
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400',
-                      )}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
+
+            {identification.researchDescription && (
+              <p className="text-sm text-gray-600 leading-relaxed">{identification.researchDescription}</p>
+            )}
+
+            {researchLinks.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sources — click to verify</p>
+                {researchLinks.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
+                  >
+                    <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 truncate">{link.title}</p>
+                      <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
+                      <p className="text-xs text-blue-500 truncate mt-0.5">{link.url}</p>
+                    </div>
+                  </a>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
 
-        {/* Action buttons */}
-        {!showRejectionInput ? (
-          <div className="flex flex-col gap-2">
-            <button onClick={handleConfirm} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">
-              {selectedAltIndex !== null
-                ? `Use "${alternatives[selectedAltIndex]?.identification}" →`
-                : "Yes, that's it →"}
-            </button>
-            <button onClick={() => setShowRejectionInput(true)} className="w-full py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-600 text-sm font-medium rounded-xl transition-colors">
-              None of these are right
-            </button>
+        {/* "What's different?" box */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700">Something look off?</h4>
+            <p className="text-xs text-gray-400 mt-0.5">Describe what is different between the recommendation and your actual item — we will search again with that context.</p>
           </div>
-        ) : (
-          <div className="space-y-2">
-            <input
-              value={userCorrection}
-              onChange={(e) => setUserCorrection(e.target.value)}
-              placeholder="What is it? (optional hint)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <div className="flex gap-2">
-              <button onClick={handleRetry} className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors text-sm">
-                Try again
-              </button>
-              {retryCount >= 1 && (
-                <button onClick={prefillManual} className="flex-1 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-lg transition-colors text-sm">
-                  Enter manually
-                </button>
+          <textarea
+            value={diffNote}
+            onChange={(e) => setDiffNote(e.target.value)}
+            rows={2}
+            placeholder="e.g. The colorway is actually red/black, not white. The model number on the tag says XJ-400."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSearchWithContext}
+              disabled={!diffNote.trim()}
+              className={clsx(
+                'px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
+                diffNote.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed',
               )}
-            </div>
+            >
+              Search with this context
+            </button>
+            {retryCount >= 2 && (
+              <button
+                onClick={prefillManual}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 text-gray-700 transition-colors"
+              >
+                Identify it myself
+              </button>
+            )}
+            {retryCount > 0 && retryCount < 2 && (
+              <span className="text-xs text-gray-400">{2 - retryCount} search{2 - retryCount !== 1 ? 'es' : ''} left before manual option</span>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Confirm */}
+        <button
+          onClick={handleConfirm}
+          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+        >
+          {selectedAltIndex !== null
+            ? `Use "${alternatives[selectedAltIndex]?.identification}" \u2192`
+            : "Yes, that's it \u2192"}
+        </button>
       </div>
     );
   }
 
-  // Error / fallback state
+  // ── Error / fallback ──────────────────────────────────────────────────────
   return (
     <div className="space-y-6 max-w-lg">
       <div>
@@ -386,7 +396,7 @@ export default function Step2Identify() {
           Try again
         </button>
         <button onClick={prefillManual} className="px-6 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-lg transition-colors">
-          Enter manually
+          Identify it myself
         </button>
       </div>
     </div>
