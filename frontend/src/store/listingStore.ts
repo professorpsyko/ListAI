@@ -26,11 +26,11 @@ export interface ListingState {
 
   // Step 1 — Photos
   labelPhotoUrl: string | null;
-  /** Name + size of the label file, used to detect duplicates when uploading item photos */
-  labelPhotoMeta: { name: string; size: number } | null;
+  /** Name + size + lastModified of the label file, used to detect duplicates when uploading item photos */
+  labelPhotoMeta: { name: string; size: number; lastModified?: number } | null;
   itemPhotoUrls: string[];
   /** Metadata for each item photo, parallel to itemPhotoUrls, used for reverse-duplicate detection */
-  itemPhotoMetas: Array<{ name: string; size: number }>;
+  itemPhotoMetas: Array<{ name: string; size: number; lastModified?: number }>;
   processedPhotoUrls: string[];
   imageJobStatus: 'PENDING' | 'QUEUED' | 'PROCESSING' | 'COMPLETE' | 'FAILED';
 
@@ -74,8 +74,8 @@ export interface ListingState {
 
   // Actions
   setListingId: (id: string) => void;
-  setLabelPhoto: (url: string, meta?: { name: string; size: number } | null) => void;
-  setItemPhotos: (urls: string[], metas?: Array<{ name: string; size: number }>) => void;
+  setLabelPhoto: (url: string, meta?: { name: string; size: number; lastModified?: number } | null) => void;
+  setItemPhotos: (urls: string[], metas?: Array<{ name: string; size: number; lastModified?: number }>) => void;
   setProcessedPhotos: (urls: string[]) => void;
   setImageJobStatus: (s: ListingState['imageJobStatus']) => void;
   setIdentification: (r: IdentificationResult | null) => void;

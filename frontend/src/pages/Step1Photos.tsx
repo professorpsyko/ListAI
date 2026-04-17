@@ -74,6 +74,17 @@ function syncPhotosToBackend(id: string, labelUrl: string, itemUrls: string[]) {
   });
 }
 
+/** Two files are considered the same if size + lastModified match, falling back to name + size */
+function isSameFile(
+  a: { name: string; size: number; lastModified?: number },
+  b: { name: string; size: number; lastModified?: number },
+): boolean {
+  if (a.lastModified && b.lastModified) {
+    return a.size === b.size && a.lastModified === b.lastModified;
+  }
+  return a.name === b.name && a.size === b.size;
+}
+
 export default function Step1Photos() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -97,7 +108,7 @@ export default function Step1Photos() {
     if (!files || !files[0] || !id) return;
     setUploadError(null);
     setLabelUploading(true);
-    const labelMeta = { name: files[0].name, size: files[0].size };
+    const labelMeta = { name: files[0].name, size: files[0].size, lastModified: files[0].lastModified };
 
     const timeout = setTimeout(() => {
       setLabelUploading(false);
@@ -115,7 +126,7 @@ export default function Step1Photos() {
       // Reverse-duplicate: if this file was already in box 2, remove it
       const existingMetas = store.itemPhotoMetas;
       const dupeIndexes = existingMetas.reduce<number[]>((acc, m, i) => {
-        if (m.name === labelMeta.name && m.size === labelMeta.size) acc.push(i);
+        if (isSameFile(m, labelMeta)) acc.push(i);
         return acc;
       }, []);
       if (dupeIndexes.length > 0) {
@@ -147,9 +158,10 @@ export default function Step1Photos() {
     let filtered = fileArray;
     const meta = store.labelPhotoMeta;
     if (meta) {
-      const dupes = fileArray.filter((f) => f.name === meta.name && f.size === meta.size);
+      const fileMetas = fileArray.map((f) => ({ name: f.name, size: f.size, lastModified: f.lastModified }));
+      const dupes = fileMetas.filter((fm) => isSameFile(fm, meta));
       if (dupes.length > 0) {
-        filtered = fileArray.filter((f) => !(f.name === meta.name && f.size === meta.size));
+        filtered = fileArray.filter((f) => !isSameFile({ name: f.name, size: f.size, lastModified: f.lastModified }, meta));
         setDuplicateWarning(
           `${dupes.length} photo${dupes.length > 1 ? 's' : ''} removed — that image is already your label photo in box 1.`,
         );
@@ -174,7 +186,7 @@ export default function Step1Photos() {
       clearTimeout(timeout);
       const updatedUrls = [...store.itemPhotoUrls, ...result.urls];
       // Store metas parallel to urls so reverse-duplicate detection can work
-      const newMetas = toUpload.map((f) => ({ name: f.name, size: f.size }));
+      const newMetas = toUpload.map((f) => ({ name: f.name, size: f.size, lastModified: f.lastModified }));
       const updatedMetas = [...store.itemPhotoMetas, ...newMetas];
       store.setItemPhotos(updatedUrls, updatedMetas);
       store.setImageJobStatus('QUEUED');
