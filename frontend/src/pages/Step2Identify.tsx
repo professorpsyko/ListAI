@@ -168,62 +168,109 @@ export default function Step2Identify() {
   }
 
   if (identificationStatus === 'done' && identification && !identification.error) {
+    const alternatives = identification.alternativeIdentifications?.slice(0, 3) ?? [];
+
+    function handleSelectAlternative(alt: { identification: string; confidence: number }) {
+      if (!id) return;
+      store.setIdentification({
+        identification: alt.identification,
+        brand: '',
+        model: '',
+        serialNumber: null,
+        ebayCategory: '',
+        ebayCategoryId: null,
+        confidence: alt.confidence,
+        alternativeIdentifications: [],
+      });
+      store.setIdentificationStatus('done');
+      triggerPriceResearch(id).catch(() => {});
+      store.setCurrentStep(3);
+      navigate(`/listing/${id}/step/3`);
+    }
+
     return (
-      <div className="space-y-6 max-w-lg">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Is this your item?</h2>
-        </div>
+      <div className="space-y-5 max-w-2xl">
+        <h2 className="text-2xl font-bold text-gray-900">Is this your item?</h2>
 
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-start justify-between mb-4">
-            <h3 className="text-xl font-semibold text-gray-900">{identification.identification}</h3>
-            <span className={clsx(
-              'ml-4 flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium',
-              identification.confidence >= 80 ? 'bg-green-100 text-green-700' :
-              identification.confidence >= 60 ? 'bg-amber-100 text-amber-700' :
-              'bg-red-100 text-red-700',
-            )}>
-              {identification.confidence}% confident
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-sm text-gray-600 mb-4">
-            {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
-            {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
-            {identification.ebayCategory && <div className="col-span-2"><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
-            {identification.serialNumber && <div className="col-span-2"><span className="font-medium text-gray-800">Serial:</span> <code className="bg-gray-100 px-1.5 py-0.5 rounded">{identification.serialNumber}</code></div>}
-          </div>
-        </div>
-
-        {!showRejectionInput ? (
-          <div className="flex gap-3">
-            <button onClick={handleConfirm} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">
-              Yes, that's it →
-            </button>
-            <button onClick={() => setShowRejectionInput(true)} className="flex-1 py-3 border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-xl transition-colors">
-              No, that's wrong
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <input
-              value={userCorrection}
-              onChange={(e) => setUserCorrection(e.target.value)}
-              placeholder="What do you think it is? (optional — helps us make a better guess)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <div className="flex gap-3">
-              <button onClick={handleRetry} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
-                Try again
-              </button>
-              {retryCount >= 1 && (
-                <button onClick={prefillManual} className="flex-1 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-lg transition-colors">
-                  Enter manually
-                </button>
-              )}
+        <div className="grid grid-cols-5 gap-4 items-start">
+          {/* Left — main identification */}
+          <div className="col-span-3 space-y-3">
+            <div className="bg-white border-2 border-blue-500 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 leading-snug">{identification.identification}</h3>
+                <span className={clsx(
+                  'ml-3 flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium',
+                  identification.confidence >= 80 ? 'bg-green-100 text-green-700' :
+                  identification.confidence >= 60 ? 'bg-amber-100 text-amber-700' :
+                  'bg-red-100 text-red-700',
+                )}>
+                  {identification.confidence}%
+                </span>
+              </div>
+              <div className="space-y-1 text-sm text-gray-600">
+                {identification.brand && <div><span className="font-medium text-gray-800">Brand:</span> {identification.brand}</div>}
+                {identification.model && <div><span className="font-medium text-gray-800">Model:</span> {identification.model}</div>}
+                {identification.ebayCategory && <div><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
+                {identification.serialNumber && <div><span className="font-medium text-gray-800">Serial:</span> <code className="bg-gray-100 px-1.5 py-0.5 rounded">{identification.serialNumber}</code></div>}
+              </div>
             </div>
+
+            {!showRejectionInput ? (
+              <div className="flex flex-col gap-2">
+                <button onClick={handleConfirm} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">
+                  Yes, that's it →
+                </button>
+                <button onClick={() => setShowRejectionInput(true)} className="w-full py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-600 text-sm font-medium rounded-xl transition-colors">
+                  None of these are right
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  value={userCorrection}
+                  onChange={(e) => setUserCorrection(e.target.value)}
+                  placeholder="What is it? (optional hint)"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleRetry} className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors text-sm">
+                    Try again
+                  </button>
+                  {retryCount >= 1 && (
+                    <button onClick={prefillManual} className="flex-1 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-lg transition-colors text-sm">
+                      Enter manually
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Right — alternatives */}
+          {alternatives.length > 0 && (
+            <div className="col-span-2 space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Other possibilities</p>
+              {alternatives.map((alt, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSelectAlternative(alt)}
+                  className="w-full text-left p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-sm transition-all group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-800 leading-snug group-hover:text-blue-700">{alt.identification}</p>
+                    <span className={clsx(
+                      'flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium',
+                      alt.confidence >= 60 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500',
+                    )}>
+                      {alt.confidence}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1 group-hover:text-blue-500">Tap to select</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
