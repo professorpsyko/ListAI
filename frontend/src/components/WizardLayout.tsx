@@ -1,10 +1,12 @@
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
-import { UserButton } from '@clerk/clerk-react';
+import { UserButton, useUser } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { useJobPolling } from '../hooks/useJobPolling';
 import DevPanel from './DevPanel';
 import clsx from 'clsx';
+
+const DEV_EMAIL = 'benjamin.marshall95@gmail.com';
 
 const STEPS = [
   { n: 1, label: 'Photos' },
@@ -35,8 +37,10 @@ export default function WizardLayout() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const store = useListingStore();
+  const { user } = useUser();
   const currentStep = store.currentStep;
   const imageJobStatus = store.imageJobStatus;
+  const isDevUser = user?.primaryEmailAddress?.emailAddress === DEV_EMAIL;
 
   // Background polling — runs continuously while in wizard
   useJobPolling(id ?? null);
@@ -134,7 +138,7 @@ export default function WizardLayout() {
         <Outlet />
       </main>
 
-      <DevPanel />
+      {isDevUser && <DevPanel />}
     </div>
   );
 }

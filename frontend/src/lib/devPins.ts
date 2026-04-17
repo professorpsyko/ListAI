@@ -14,6 +14,7 @@ export interface DevPinData {
   5?: { itemTitle: string };
   6?: { itemDescription: string };
   7?: { shippingService: string; shippingCost: string; handlingTime: string; acceptReturns: boolean; returnWindow: number };
+  8?: Record<string, never>; // Preview step — nothing to pin
 }
 
 const PIN_KEY = 'listsamurai-dev-pins';
