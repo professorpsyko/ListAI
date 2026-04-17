@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { identifyItem, retryIdentify, triggerPriceResearch } from '../lib/api';
 import type { IdentificationResult } from '../store/listingStore';
+import { getDevPin, clearDevPin } from '../lib/devPins';
 import clsx from 'clsx';
 
 export default function Step2Identify() {
@@ -14,6 +15,7 @@ export default function Step2Identify() {
   const [userCorrection, setUserCorrection] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [showRejectionInput, setShowRejectionInput] = useState(false);
+  const [usingPin, setUsingPin] = useState(false);
 
   // Selection state for the identification cards
   const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null); // null = main
@@ -29,6 +31,14 @@ export default function Step2Identify() {
   const { identification, identificationStatus } = store;
 
   useEffect(() => {
+    // Check for pinned identification data first
+    const pin = getDevPin(2);
+    if (pin && identificationStatus === 'idle') {
+      store.setIdentification(pin.identification);
+      store.setIdentificationStatus('done');
+      setUsingPin(true);
+      return;
+    }
     // Auto-trigger identification on mount if not already done
     if (identificationStatus === 'idle' && store.itemPhotoUrls.length > 0) {
       runIdentify();
@@ -216,6 +226,24 @@ export default function Step2Identify() {
     return (
       <div className="space-y-5 max-w-2xl">
         <h2 className="text-2xl font-bold text-gray-900">Is this your item?</h2>
+
+        {/* Pinned data banner */}
+        {usingPin && (
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-green-700">
+              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <span><strong>Pinned data</strong> — skipped Claude API call</span>
+            </div>
+            <button
+              onClick={() => { clearDevPin(2); setUsingPin(false); store.setIdentificationStatus('idle'); store.setIdentification(null); runIdentify(); }}
+              className="text-xs text-green-600 hover:text-green-800 underline"
+            >
+              Run live
+            </button>
+          </div>
+        )}
 
         {/* Cards row */}
         <div className="grid grid-cols-5 gap-3 items-start">

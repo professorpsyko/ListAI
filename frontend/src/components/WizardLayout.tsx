@@ -3,6 +3,7 @@ import { UserButton } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { useJobPolling } from '../hooks/useJobPolling';
+import DevPanel from './DevPanel';
 import clsx from 'clsx';
 
 const STEPS = [
@@ -132,6 +133,8 @@ export default function WizardLayout() {
       <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-8">
         <Outlet />
       </main>
+
+      <DevPanel />
     </div>
   );
 }
