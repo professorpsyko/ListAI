@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../lib/redis';
+import { createRedisConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { processMultipleImages } from '../services/image';
 
@@ -41,10 +41,14 @@ export function startImageWorker() {
       return { processedUrls, failedCount };
     },
     {
-      connection: redisConnection,
+      connection: createRedisConnection('redis:image-worker'),
       concurrency: 5,
     },
   );
+
+  worker.on('error', (err) => {
+    console.error('[ImageWorker] Worker error:', err.message);
+  });
 
   worker.on('failed', async (job, err) => {
     if (job) {

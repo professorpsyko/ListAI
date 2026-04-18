@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../lib/redis';
+import { createRedisConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { researchPricing } from '../services/pricing';
 
@@ -38,10 +38,14 @@ export function startPricingWorker() {
       return result;
     },
     {
-      connection: redisConnection,
+      connection: createRedisConnection('redis:pricing-worker'),
       concurrency: 3,
     },
   );
+
+  worker.on('error', (err) => {
+    console.error('[PricingWorker] Worker error:', err.message);
+  });
 
   worker.on('failed', async (job, err) => {
     if (job) {

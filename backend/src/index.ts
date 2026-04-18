@@ -71,9 +71,10 @@ async function main() {
   await prisma.$connect();
   console.log('✅ Database connected');
 
-  // Start background workers
-  startImageWorker();
-  startPricingWorker();
+  // Start background workers — store references so they are never GC'd
+  const _imageWorker = startImageWorker();
+  const _pricingWorker = startPricingWorker();
+  console.log(`✅ Workers started (image: ${_imageWorker.name}, pricing: ${_pricingWorker.name})`);
 
   const port = parseInt(config.PORT, 10);
   app.listen(port, () => {

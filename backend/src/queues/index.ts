@@ -1,8 +1,8 @@
 import { Queue } from 'bullmq';
-import { redisConnection } from '../lib/redis';
+import { createRedisConnection } from '../lib/redis';
 
 export const imageQueue = new Queue('image-processing', {
-  connection: redisConnection,
+  connection: createRedisConnection('redis:image-queue'),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 2000 },
@@ -12,7 +12,7 @@ export const imageQueue = new Queue('image-processing', {
 });
 
 export const pricingQueue = new Queue('pricing-research', {
-  connection: redisConnection,
+  connection: createRedisConnection('redis:pricing-queue'),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 2000 },
