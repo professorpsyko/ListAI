@@ -66,7 +66,14 @@ export interface ListingState {
   handlingTime: string;
   acceptReturns: boolean;
   returnWindow: number;
-  shippingSuggestion: { shippingService: string; estimatedCost: number; handlingTime: string } | null;
+  shippingSuggestion: {
+    recommendedService: string;
+    estimatedCost: number;
+    handlingTime: string;
+    reasoning: string;
+    costEstimates: Record<string, number>;
+  } | null;
+  shippingSuggestionStatus: 'PENDING' | 'LOADING' | 'COMPLETE' | 'FAILED';
 
   // Step 8 — Listing type
   listingType: 'BUY_IT_NOW' | 'AUCTION';
@@ -100,6 +107,7 @@ export interface ListingState {
   setAcceptReturns: (v: boolean) => void;
   setReturnWindow: (v: number) => void;
   setShippingSuggestion: (v: ListingState['shippingSuggestion']) => void;
+  setShippingSuggestionStatus: (v: ListingState['shippingSuggestionStatus']) => void;
   setListingType: (v: 'BUY_IT_NOW' | 'AUCTION') => void;
   setAuctionDuration: (v: number) => void;
   setStartingBid: (v: string) => void;
@@ -133,6 +141,7 @@ const initialState = {
   acceptReturns: false,
   returnWindow: 30,
   shippingSuggestion: null,
+  shippingSuggestionStatus: 'PENDING' as const,
   listingType: 'BUY_IT_NOW' as const,
   auctionDuration: 7,
   startingBid: '',
@@ -169,6 +178,7 @@ export const useListingStore = create<ListingState>()(
       setAcceptReturns: (v) => set({ acceptReturns: v }),
       setReturnWindow: (v) => set({ returnWindow: v }),
       setShippingSuggestion: (v) => set({ shippingSuggestion: v }),
+      setShippingSuggestionStatus: (v) => set({ shippingSuggestionStatus: v }),
       setListingType: (v) => set({ listingType: v }),
       setAuctionDuration: (v) => set({ auctionDuration: v }),
       setStartingBid: (v) => set({ startingBid: v }),

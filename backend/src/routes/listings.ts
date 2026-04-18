@@ -5,6 +5,7 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { imageQueue } from '../queues';
 import { researchPricing } from '../services/pricing';
+import { suggestShipping } from '../services/shipping';
 import { uploadToCloudinary } from '../services/image';
 import { identifyItem } from '../services/vision';
 import { generateTitle, generateDescription } from '../services/listing-ai';
@@ -156,6 +157,7 @@ router.get('/:id/job-status', requireAuth, async (req: Request, res: Response) =
       processedImageUrls: true,
       pricingResearch: true,
       suggestedPrice: true,
+      shippingSuggestion: true,
     },
   });
   if (!listing) {
@@ -307,6 +309,45 @@ router.post('/:id/price-research', requireAuth, async (req: Request, res: Respon
         where: { id: listingId },
         data: { pricingJobStatus: 'FAILED' },
       }).catch(console.error);
+    }
+  });
+});
+
+// Suggest shipping costs
+router.post('/:id/shipping-suggestion', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const listing = await prisma.listing.findFirst({
+    where: { id: req.params.id, userId: auth.user.id },
+  });
+  if (!listing) {
+    res.status(404).json({ error: 'Listing not found' });
+    return;
+  }
+
+  const identification = listing.rawIdentification as Record<string, string> | null;
+  const itemName = identification?.identification || listing.itemTitle || '';
+  if (!itemName) {
+    res.status(400).json({ error: 'Item must be identified before shipping suggestion' });
+    return;
+  }
+
+  const listingId = req.params.id;
+  res.json({ status: 'QUEUED' });
+
+  setImmediate(async () => {
+    try {
+      const result = await suggestShipping({
+        itemName,
+        category: listing.itemCategory || '',
+        condition: listing.itemCondition || 'Used',
+      });
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: { shippingSuggestion: JSON.parse(JSON.stringify(result)) },
+      });
+      console.log(`[Shipping] Done for listing ${listingId}. Recommended: ${result.recommendedService} $${result.estimatedCost}`);
+    } catch (err) {
+      console.error(`[Shipping] Failed for listing ${listingId}:`, (err as Error).message);
     }
   });
 });

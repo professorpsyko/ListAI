@@ -7,6 +7,10 @@ export function useJobPolling(listingId: string | null) {
   const setProcessedPhotos = useListingStore((s) => s.setProcessedPhotos);
   const setPricingJobStatus = useListingStore((s) => s.setPricingJobStatus);
   const setPricingResearch = useListingStore((s) => s.setPricingResearch);
+  const setShippingSuggestion = useListingStore((s) => s.setShippingSuggestion);
+  const setShippingSuggestionStatus = useListingStore((s) => s.setShippingSuggestionStatus);
+  const shippingSuggestionStatus = useListingStore((s) => s.shippingSuggestionStatus);
+
   return useQuery({
     queryKey: ['job-status', listingId],
     queryFn: async () => {
@@ -29,6 +33,12 @@ export function useJobPolling(listingId: string | null) {
         setPricingResearch(data.pricingResearch);
       }
 
+      // Sync shipping suggestion
+      if (data.shippingSuggestion) {
+        setShippingSuggestion(data.shippingSuggestion);
+        setShippingSuggestionStatus('COMPLETE');
+      }
+
       return data;
     },
     enabled: !!listingId,
@@ -37,8 +47,9 @@ export function useJobPolling(listingId: string | null) {
       if (!data) return 2000;
       const imagesDone = ['COMPLETE', 'FAILED'].includes(data.imageJobStatus);
       const pricingDone = ['COMPLETE', 'FAILED'].includes(data.pricingJobStatus);
-      // Stop polling once both jobs are done
-      return imagesDone && pricingDone ? false : 2000;
+      // Keep polling while shipping suggestion is still loading
+      const shippingDone = shippingSuggestionStatus === 'COMPLETE' || shippingSuggestionStatus === 'FAILED' || !!data.shippingSuggestion;
+      return imagesDone && pricingDone && shippingDone ? false : 2000;
     },
   });
 }

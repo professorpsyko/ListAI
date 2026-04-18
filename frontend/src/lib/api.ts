@@ -60,6 +60,9 @@ export const retryIdentify = (id: string, userCorrection?: string) =>
 export const triggerPriceResearch = (id: string) =>
   api.post(`/listings/${id}/price-research`).then((r) => r.data);
 
+export const triggerShippingSuggestion = (id: string) =>
+  api.post(`/listings/${id}/shipping-suggestion`).then((r) => r.data);
+
 export const generateTitle = (id: string) =>
   api.post(`/listings/${id}/generate-title`).then((r) => r.data);
 

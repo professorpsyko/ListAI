@@ -1,65 +1,201 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { publishListing, updateListing } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 
-// ─── Listing score calculation ─────────────────────────────────────────────────
-function calcScore(store: ReturnType<typeof useListingStore.getState>) {
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Suggestion {
+  id: string;
+  text: string;
+  why: string;
+  points: number;
+}
+
+type PublishStage = 'idle' | 'saving' | 'publishing' | 'success' | 'error';
+
+const PUBLISH_STEPS: { id: PublishStage; label: string }[] = [
+  { id: 'saving', label: 'Saving listing data' },
+  { id: 'publishing', label: 'Creating eBay listing' },
+  { id: 'success', label: 'Live on eBay!' },
+];
+
+// ─── Score calculation ────────────────────────────────────────────────────────
+function calcScore(
+  store: ReturnType<typeof useListingStore.getState>,
+  dismissed: string[],
+): { score: number; suggestions: Suggestion[] } {
   let score = 0;
-  const tips: string[] = [];
+  const all: Suggestion[] = [];
 
-  // Photos (25pts)
+  // Photos (25 pts)
   const photoCount = store.processedPhotoUrls.length || store.itemPhotoUrls.length;
-  if (photoCount >= 10) score += 25;
-  else if (photoCount >= 5) score += 20;
-  else if (photoCount >= 2) score += 10;
-  else tips.push('Add at least 2 photos');
+  if (photoCount >= 10) {
+    score += 25;
+  } else if (photoCount >= 5) {
+    score += 20;
+    all.push({
+      id: 'more-photos',
+      text: 'Add more photos (aim for 10)',
+      why: 'eBay listings with 10 photos see up to 40% higher conversion. Buyers want to inspect every angle before buying.',
+      points: 5,
+    });
+  } else if (photoCount >= 2) {
+    score += 10;
+    all.push({
+      id: 'more-photos',
+      text: 'Add at least 5 photos',
+      why: 'Multiple photos dramatically increase buyer confidence. Show all sides, any wear, and included accessories.',
+      points: 15,
+    });
+  } else {
+    all.push({
+      id: 'more-photos',
+      text: 'Add more photos',
+      why: 'Listings without photos rarely sell. Add several clear images from different angles.',
+      points: 25,
+    });
+  }
 
-  // Title (20pts)
+  // Title (20 pts)
   const titleLen = store.itemTitle.length;
-  if (titleLen >= 75) score += 20;
-  else if (titleLen >= 65) score += 15;
-  else if (titleLen >= 50) score += 10;
-  else tips.push('Lengthen your title (aim for 65+ characters)');
+  if (titleLen >= 75) {
+    score += 20;
+  } else if (titleLen >= 65) {
+    score += 15;
+    all.push({
+      id: 'longer-title',
+      text: 'Lengthen title to 75+ characters',
+      why: 'eBay allows 80 characters. Longer titles include more keywords buyers search for, directly boosting search rank.',
+      points: 5,
+    });
+  } else if (titleLen >= 50) {
+    score += 10;
+    all.push({
+      id: 'longer-title',
+      text: 'Lengthen title to 65+ characters',
+      why: "Include brand, model, condition, and key features. Titles with 65–80 chars get significantly better search placement.",
+      points: 10,
+    });
+  } else {
+    all.push({
+      id: 'longer-title',
+      text: 'Write a detailed title (65+ characters)',
+      why: 'Short titles miss key search terms. Buyers search by model number, brand, and specific features — capture them all.',
+      points: 20,
+    });
+  }
 
-  // Description (20pts)
+  // Description (20 pts)
   const wordCount = store.itemDescription.split(/\s+/).filter(Boolean).length;
-  if (wordCount >= 300) score += 20;
-  else if (wordCount >= 200) score += 15;
-  else if (wordCount >= 100) score += 10;
-  else tips.push('Expand your description (aim for 200+ words)');
+  if (wordCount >= 300) {
+    score += 20;
+  } else if (wordCount >= 200) {
+    score += 15;
+    all.push({
+      id: 'longer-desc',
+      text: 'Expand description to 300+ words',
+      why: "Longer descriptions reduce buyer questions and returns. Include exact specs, history, what's included, and any known flaws.",
+      points: 5,
+    });
+  } else if (wordCount >= 100) {
+    score += 10;
+    all.push({
+      id: 'longer-desc',
+      text: 'Expand description to 200+ words',
+      why: 'Buyers read descriptions to decide. Cover condition detail, included accessories, dimensions, and any imperfections.',
+      points: 10,
+    });
+  } else {
+    all.push({
+      id: 'longer-desc',
+      text: 'Write a detailed description',
+      why: 'A thorough description answers buyer questions before they ask, reducing back-and-forth and increasing sale confidence.',
+      points: 20,
+    });
+  }
 
-  // Price (20pts)
+  // Price (20 pts)
   const suggested = store.pricingResearch?.suggestedPrice;
   const final = parseFloat(store.finalPrice);
   if (suggested && !isNaN(final)) {
     const diff = Math.abs(final - suggested) / suggested;
-    if (diff <= 0.10) score += 20;
-    else if (diff <= 0.20) score += 10;
-    else tips.push('Price is far from market value');
+    if (diff <= 0.10) {
+      score += 20;
+    } else if (diff <= 0.25) {
+      score += 10;
+      all.push({
+        id: 'price',
+        text: 'Adjust price closer to market value',
+        why: `AI research suggests $${suggested.toFixed(2)}. Listings priced within 10% of market value sell 3× faster on average.`,
+        points: 10,
+      });
+    } else {
+      all.push({
+        id: 'price',
+        text: 'Price is far from market value',
+        why: `AI research suggests $${suggested.toFixed(2)}. You're more than 25% away — this may cause the listing to sit unsold.`,
+        points: 20,
+      });
+    }
   } else {
-    score += 10; // partial credit if no pricing data
+    score += 10;
   }
 
-  // Shipping (15pts)
-  const isFree = store.shippingCost === '0' || store.shippingService.includes('Free');
-  if (isFree) score += 15;
-  else if (store.shippingService) score += 10;
-  else tips.push('Add shipping details');
+  // Shipping (15 pts)
+  const isFree = store.shippingCost === '0' || store.shippingService.toLowerCase().includes('free');
+  if (isFree) {
+    score += 15;
+  } else if (store.shippingService) {
+    score += 10;
+    all.push({
+      id: 'free-shipping',
+      text: 'Offer free shipping',
+      why: 'Free shipping listings rank higher in eBay Best Match and convert 30%+ better. Consider folding the cost into your price.',
+      points: 5,
+    });
+  } else {
+    all.push({
+      id: 'shipping',
+      text: 'Add shipping details',
+      why: "Buyers abandon listings that don't show shipping info. Add a service and cost to complete your listing.",
+      points: 15,
+    });
+  }
 
-  return { score: Math.min(score, 100), tips: tips.slice(0, 2) };
+  return {
+    score: Math.min(score, 100),
+    suggestions: all.filter((s) => !dismissed.includes(s.id)),
+  };
 }
 
+// ─── Score gauge ──────────────────────────────────────────────────────────────
 function ScoreGauge({ score }: { score: number }) {
   const color = score >= 75 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626';
   const r = 36;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - score / 100);
-
   return (
-    <div className="relative w-24 h-24">
+    <div className="relative w-20 h-20 flex-shrink-0">
       <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r={r} fill="none" stroke="#e5e7eb" strokeWidth="10" />
         <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="10"
@@ -67,47 +203,179 @@ function ScoreGauge({ score }: { score: number }) {
           style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
-        <span className="text-xs text-gray-400">/100</span>
+        <span className="text-xl font-bold" style={{ color }}>{score}</span>
+        <span className="text-[10px] text-gray-400">/100</span>
       </div>
     </div>
   );
 }
 
-function InlineEditField({
-  label, value, onChange, multiline = false,
-}: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean }) {
+// ─── Suggestion card ──────────────────────────────────────────────────────────
+function SuggestionCard({ s, onIgnore }: { s: Suggestion; onIgnore: () => void }) {
+  const [showWhy, setShowWhy] = useState(false);
+  return (
+    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+      {/* Warning icon */}
+      <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      </svg>
+
+      {/* Text + badges */}
+      <div className="flex-1 flex items-center gap-2 flex-wrap min-w-0">
+        <span className="text-sm text-gray-800">{s.text}</span>
+        <span className="text-xs font-semibold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+          +{s.points} pts
+        </span>
+        {/* Why tooltip */}
+        <div className="relative">
+          <button
+            onMouseEnter={() => setShowWhy(true)}
+            onMouseLeave={() => setShowWhy(false)}
+            className="w-4 h-4 rounded-full border border-gray-400 text-gray-400 text-[10px] flex items-center justify-center hover:border-blue-400 hover:text-blue-500 transition-colors flex-shrink-0"
+          >
+            ?
+          </button>
+          {showWhy && (
+            <div className="absolute left-6 top-0 z-50 w-64 bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl leading-relaxed pointer-events-none">
+              {s.why}
+              <div className="absolute left-[-4px] top-2.5 w-2 h-2 bg-gray-900 rotate-45" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Ignore */}
+      <button
+        onClick={onIgnore}
+        className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0 ml-1 transition-colors"
+      >
+        Ignore
+      </button>
+    </div>
+  );
+}
+
+// ─── Sortable photo tile ──────────────────────────────────────────────────────
+function SortablePhoto({
+  url, index, isLabel,
+}: {
+  url: string; index: number; isLabel: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: url });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.45 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  const isMain = index === 0;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="relative flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+      title={isMain ? 'Main image (shown first on eBay)' : isLabel ? 'Tag / serial number photo' : `Photo ${index + 1}`}
+    >
+      <img
+        src={url}
+        alt={isLabel ? 'Tag / serial' : `Photo ${index + 1}`}
+        draggable={false}
+        className={clsx(
+          'object-cover rounded-xl border transition-all',
+          isMain
+            ? 'h-52 w-52 border-2 border-blue-400 shadow-lg'
+            : 'h-24 w-24 border-gray-200 shadow-sm hover:shadow-md',
+          isDragging && 'shadow-2xl ring-2 ring-blue-300',
+        )}
+      />
+      {isMain && (
+        <span className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full shadow">
+          Main
+        </span>
+      )}
+      {isLabel && !isMain && (
+        <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+          Tag
+        </span>
+      )}
+      {!isMain && !isLabel && (
+        <span className="absolute top-1 left-1 bg-black/40 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-medium">
+          {index + 1}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Description editor toolbar ───────────────────────────────────────────────
+function DescToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+  if (!editor) return null;
+  return (
+    <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap">
+      {[
+        { title: 'Bold', active: editor.isActive('bold'), run: () => editor.chain().focus().toggleBold().run(), label: <strong>B</strong> },
+        { title: 'Italic', active: editor.isActive('italic'), run: () => editor.chain().focus().toggleItalic().run(), label: <em>I</em> },
+      ].map(({ title, active, run, label }) => (
+        <button
+          key={title}
+          type="button"
+          title={title}
+          onMouseDown={(e) => { e.preventDefault(); run(); }}
+          className={clsx('w-7 h-7 flex items-center justify-center rounded text-sm transition-colors',
+            active ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800')}
+        >
+          {label}
+        </button>
+      ))}
+      <div className="w-px h-4 bg-gray-300 mx-1" />
+      <button type="button" title="Bullet list"
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }}
+        className={clsx('w-7 h-7 flex items-center justify-center rounded transition-colors',
+          editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100')}>
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+        </svg>
+      </button>
+      <button type="button" title="Numbered list"
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); }}
+        className={clsx('w-7 h-7 flex items-center justify-center rounded transition-colors',
+          editor.isActive('orderedList') ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100')}>
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ─── Inline edit (title) ──────────────────────────────────────────────────────
+function InlineEditField({ label, value, onChange }: {
+  label: string; value: string; onChange: (v: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-
-  function save() {
-    onChange(draft);
-    setEditing(false);
-  }
 
   if (editing) {
     return (
       <div className="space-y-2">
         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</label>
-        {multiline ? (
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={6}
-            className="w-full border border-blue-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 resize-none"
-            autoFocus
-          />
-        ) : (
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="w-full border border-blue-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-        )}
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className="w-full border border-blue-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+          autoFocus
+        />
         <div className="flex gap-2">
-          <button onClick={save} className="px-3 py-1 bg-blue-600 text-white text-sm rounded font-medium">Save</button>
-          <button onClick={() => setEditing(false)} className="px-3 py-1 border border-gray-300 text-sm rounded text-gray-600">Cancel</button>
+          <button onClick={() => { onChange(draft); setEditing(false); }}
+            className="px-3 py-1 bg-blue-600 text-white text-sm rounded font-medium">Save</button>
+          <button onClick={() => setEditing(false)}
+            className="px-3 py-1 border border-gray-300 text-sm rounded text-gray-600">Cancel</button>
         </div>
       </div>
     );
@@ -122,133 +390,402 @@ function InlineEditField({
           Edit
         </button>
       </div>
-      <p className="text-sm text-gray-800 whitespace-pre-wrap">{value || <span className="text-gray-400 italic">Not set</span>}</p>
+      <p className="text-sm text-gray-800">{value || <span className="text-gray-400 italic">Not set</span>}</p>
     </div>
   );
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function Step8Preview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const store = useListingStore();
 
+  // ── Publish state ──────────────────────────────────────────────────────────
   const [showConfirm, setShowConfirm] = useState(false);
-  const [publishing, setPublishing] = useState(false);
+  const [publishStage, setPublishStage] = useState<PublishStage>('idle');
   const [publishResult, setPublishResult] = useState<{ listingUrl: string } | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
 
-  const { score, tips } = calcScore(store);
+  // ── Score / suggestions ────────────────────────────────────────────────────
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const { score, suggestions } = calcScore(store, dismissed);
 
-  useStepAction(
-    publishing ? 'Publishing…' : '🚀 Publish to eBay',
-    publishing,
-    () => setShowConfirm(true),
-    'bg-green-600 hover:bg-green-700 text-white',
+  // ── Photos DnD ─────────────────────────────────────────────────────────────
+  const [showOriginal, setShowOriginal] = useState(false);
+  const basePhotos = showOriginal
+    ? store.itemPhotoUrls
+    : (store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls);
+  const labelUrl = store.labelPhotoUrl;
+
+  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
+    labelUrl ? [...basePhotos, labelUrl] : basePhotos,
   );
 
-  const photos = store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls;
-  const [showOriginal, setShowOriginal] = useState(false);
-  const displayPhotos = showOriginal ? store.itemPhotoUrls : photos;
+  // Re-sync if processed photos arrive after mount
+  useEffect(() => {
+    const fresh = showOriginal
+      ? store.itemPhotoUrls
+      : (store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls);
+    const withLabel = labelUrl ? [...fresh, labelUrl] : fresh;
+    setOrderedPhotos(withLabel);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.processedPhotoUrls.length, showOriginal]);
 
-  async function handlePublish() {
-    if (!id) return;
-    setPublishing(true);
-    setPublishError(null);
-    try {
-      // Save final state before publish
-      await updateListing(id, {
-        itemTitle: store.itemTitle,
-        itemDescription: store.itemDescription,
-        finalPrice: parseFloat(store.finalPrice),
-        listingType: store.listingType,
-        auctionDuration: store.auctionDuration,
-        startingBid: store.startingBid ? parseFloat(store.startingBid) : undefined,
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setOrderedPhotos((arr) => {
+        const oldIndex = arr.indexOf(active.id as string);
+        const newIndex = arr.indexOf(over.id as string);
+        return arrayMove(arr, oldIndex, newIndex);
       });
-      const result = await publishListing(id);
-      setPublishResult(result);
-      setShowConfirm(false);
-    } catch (err) {
-      setPublishError((err as Error).message);
-    } finally {
-      setPublishing(false);
     }
   }
 
-  if (publishResult) {
+  // ── Description TipTap editor ──────────────────────────────────────────────
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descDraft, setDescDraft] = useState(store.itemDescription);
+
+  const descEditor = useEditor({
+    extensions: [StarterKit, Markdown],
+    content: store.itemDescription,
+    editable: false,
+    editorProps: { attributes: { class: 'focus:outline-none' } },
+    onUpdate: ({ editor }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const md = (editor.storage as any).markdown.getMarkdown() as string;
+      setDescDraft(md);
+    },
+  });
+
+  // Toggle editable when edit mode changes
+  useEffect(() => {
+    if (!descEditor) return;
+    descEditor.setEditable(editingDesc);
+    if (editingDesc) {
+      setTimeout(() => descEditor.commands.focus('end'), 0);
+    }
+  }, [editingDesc, descEditor]);
+
+  function saveDesc() {
+    store.setItemDescription(descDraft);
+    setEditingDesc(false);
+  }
+
+  function cancelDesc() {
+    if (descEditor) descEditor.commands.setContent(store.itemDescription);
+    setDescDraft(store.itemDescription);
+    setEditingDesc(false);
+  }
+
+  // ── Step action button ─────────────────────────────────────────────────────
+  const isPublished = publishStage === 'success';
+  const isCurrentlyPublishing = showConfirm && publishStage !== 'idle' && publishStage !== 'error';
+
+  useStepAction(
+    isPublished ? '✓ Published!' : (isCurrentlyPublishing ? 'Publishing…' : '🚀 Publish to eBay'),
+    isCurrentlyPublishing,
+    isPublished ? () => {} : () => setShowConfirm(true),
+    isPublished
+      ? 'bg-green-600 text-white cursor-default'
+      : 'bg-green-600 hover:bg-green-700 text-white',
+  );
+
+  // ── Publish handler ────────────────────────────────────────────────────────
+  async function handlePublish() {
+    if (!id) return;
+    setPublishError(null);
+    setPublishStage('saving');
+
+    try {
+      // Step 1: Save all latest changes + reordered photos
+      await updateListing(id, {
+        itemTitle: store.itemTitle,
+        itemDescription: store.itemDescription,
+        finalPrice: parseFloat(store.finalPrice) || 0,
+        listingType: store.listingType,
+        auctionDuration: store.auctionDuration,
+        startingBid: store.startingBid ? parseFloat(store.startingBid) : undefined,
+        imageUrls: orderedPhotos,
+        processedImageUrls: orderedPhotos,
+      });
+
+      // Step 2: Publish to eBay
+      setPublishStage('publishing');
+      const result = await publishListing(id);
+
+      setPublishResult(result);
+      setPublishStage('success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setPublishError(msg);
+      setPublishStage('error');
+    }
+  }
+
+  // ── Publish modal ──────────────────────────────────────────────────────────
+  const stageIndex = PUBLISH_STEPS.findIndex((s) => s.id === publishStage);
+
+  function renderPublishModal() {
+    if (!showConfirm) return null;
+
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center space-y-6">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+
+          {/* ── Initial confirm ── */}
+          {publishStage === 'idle' && (
+            <div className="p-8 space-y-5">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Publish to eBay?</h3>
+                <p className="text-gray-500 mt-1 text-sm">Your listing will go live immediately once published.</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePublish}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Yes, publish
+                </button>
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Progress timeline ── */}
+          {(publishStage === 'saving' || publishStage === 'publishing' || publishStage === 'success') && (
+            <div className="p-8 space-y-6">
+              <h3 className={clsx(
+                'text-lg font-bold',
+                publishStage === 'success' ? 'text-green-700' : 'text-gray-900',
+              )}>
+                {publishStage === 'success' ? '🎉 Your listing is live!' : 'Publishing to eBay…'}
+              </h3>
+
+              <div className="space-y-4">
+                {PUBLISH_STEPS.map((step, i) => {
+                  const isDone = publishStage === 'success' || i < stageIndex;
+                  const isActive = step.id === publishStage;
+                  const isPending = !isDone && !isActive;
+
+                  return (
+                    <div key={step.id} className="flex items-center gap-3">
+                      {/* Step indicator */}
+                      {isDone ? (
+                        <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      ) : isActive ? (
+                        <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin flex-shrink-0" />
+                      ) : (
+                        <div className={clsx(
+                          'w-6 h-6 rounded-full border-2 flex-shrink-0',
+                          isPending ? 'border-gray-200' : 'border-gray-300',
+                        )} />
+                      )}
+
+                      {/* Step label */}
+                      <span className={clsx(
+                        'text-sm font-medium',
+                        isDone ? 'text-green-700'
+                          : isActive ? 'text-blue-700'
+                            : 'text-gray-400',
+                      )}>
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Success actions */}
+              {publishStage === 'success' && publishResult && (
+                <div className="space-y-3 pt-2">
+                  <a
+                    href={publishResult.listingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-center transition-colors"
+                  >
+                    View listing on eBay →
+                  </a>
+                  <button
+                    onClick={() => { store.reset(); navigate('/dashboard'); }}
+                    className="block w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors text-center"
+                  >
+                    Create another listing
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Error state ── */}
+          {publishStage === 'error' && (
+            <div className="p-8 space-y-5">
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Publish failed</h3>
+                {publishError && (
+                  <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 w-full text-left">
+                    {publishError}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setPublishStage('idle'); handlePublish(); }}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Try again
+                </button>
+                <button
+                  onClick={() => { setShowConfirm(false); setPublishStage('idle'); }}
+                  className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">Your listing is live!</h2>
-        <a href={publishResult.listingUrl} target="_blank" rel="noopener noreferrer"
-          className="text-blue-600 hover:underline text-lg font-medium">
-          View on eBay →
-        </a>
-        <button
-          onClick={() => { store.reset(); navigate('/dashboard'); }}
-          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-        >
-          Create another listing
-        </button>
       </div>
     );
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Preview & publish</h2>
-          <p className="text-gray-500 mt-1">Review your listing before it goes live.</p>
+    <div className="space-y-8 max-w-3xl">
+
+      {/* ── Header + score ──────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-start gap-6">
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-gray-900">Preview & publish</h2>
+            <p className="text-gray-500 mt-1">Review your listing before it goes live.</p>
+          </div>
+          {/* Compact score gauge */}
+          <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex-shrink-0">
+            <ScoreGauge score={score} />
+            <div>
+              <p className="text-xs font-semibold text-gray-600">Listing quality</p>
+              <p className="text-xs text-gray-400">{score >= 75 ? 'Looking great!' : score >= 50 ? 'Room to improve' : 'Needs attention'}</p>
+            </div>
+          </div>
         </div>
 
-        {/* Score widget */}
-        <div className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-xl p-4 shadow-sm min-w-[140px]">
-          <ScoreGauge score={score} />
-          <p className="text-xs font-medium text-gray-600 text-center">Listing quality</p>
-          {tips.length > 0 && (
-            <ul className="text-xs text-gray-400 space-y-1 w-full">
-              {tips.map((t, i) => <li key={i} className="text-center leading-tight">{t}</li>)}
-            </ul>
-          )}
-        </div>
+        {/* Improvement suggestions */}
+        {suggestions.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {suggestions.map((s) => (
+              <SuggestionCard
+                key={s.id}
+                s={s}
+                onIgnore={() => setDismissed((d) => [...d, s.id])}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Photos strip */}
+      {/* ── Photos ─────────────────────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-gray-700">Photos ({displayPhotos.length})</h3>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-gray-700">Photos ({orderedPhotos.length})</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Drag to reorder · first photo is the main eBay image</p>
+          </div>
           {store.processedPhotoUrls.length > 0 && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-1 text-xs bg-gray-100 rounded-lg p-1">
               <button onClick={() => setShowOriginal(false)}
-                className={clsx('px-2 py-1 rounded', !showOriginal ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-500 hover:text-gray-700')}>
+                className={clsx('px-2.5 py-1 rounded-md transition-colors',
+                  !showOriginal ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
                 Processed
               </button>
               <button onClick={() => setShowOriginal(true)}
-                className={clsx('px-2 py-1 rounded', showOriginal ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-500 hover:text-gray-700')}>
+                className={clsx('px-2.5 py-1 rounded-md transition-colors',
+                  showOriginal ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
                 Original
               </button>
             </div>
           )}
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {displayPhotos.map((url, i) => (
-            <img key={i} src={url} alt={`Photo ${i + 1}`}
-              className="h-28 w-28 flex-shrink-0 rounded-lg object-cover border border-gray-200" />
-          ))}
-        </div>
+
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedPhotos} strategy={horizontalListSortingStrategy}>
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide items-end">
+              {orderedPhotos.map((url, i) => (
+                <SortablePhoto
+                  key={url}
+                  url={url}
+                  index={i}
+                  isLabel={url === labelUrl}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
-      {/* Listing details */}
+      {/* ── Listing details card ───────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-6">
+
+        {/* Title */}
         <InlineEditField label="Title" value={store.itemTitle} onChange={store.setItemTitle} />
         <hr className="border-gray-100" />
-        <InlineEditField label="Description" value={store.itemDescription} onChange={store.setItemDescription} multiline />
+
+        {/* Description — read-only TipTap, toggle to edit */}
+        <div className="group">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Description</label>
+            {!editingDesc ? (
+              <button
+                onClick={() => setEditingDesc(true)}
+                className="text-xs text-blue-600 hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                Edit
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={saveDesc} className="text-xs text-blue-600 hover:underline font-medium">Save</button>
+                <button onClick={cancelDesc} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            )}
+          </div>
+
+          <div className={clsx(
+            'border rounded-lg overflow-hidden transition-all',
+            editingDesc
+              ? 'border-blue-400 ring-2 ring-blue-200'
+              : 'border-transparent',
+          )}>
+            {editingDesc && <DescToolbar editor={descEditor} />}
+            <div className={clsx(!editingDesc && 'px-0')}>
+              {store.itemDescription ? (
+                <EditorContent editor={descEditor} />
+              ) : (
+                <p className="text-sm text-gray-400 italic px-1 py-2">No description yet</p>
+              )}
+            </div>
+          </div>
+        </div>
         <hr className="border-gray-100" />
 
+        {/* Condition / Color */}
         <div className="grid grid-cols-2 gap-6">
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Condition</p>
@@ -266,13 +803,15 @@ export default function Step8Preview() {
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Listing type</p>
             <div className="flex gap-3">
-              {['BUY_IT_NOW', 'AUCTION'].map((t) => (
+              {(['BUY_IT_NOW', 'AUCTION'] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => store.setListingType(t as 'BUY_IT_NOW' | 'AUCTION')}
+                  onClick={() => store.setListingType(t)}
                   className={clsx(
                     'px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
-                    store.listingType === t ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:border-blue-400',
+                    store.listingType === t
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 text-gray-600 hover:border-blue-400',
                   )}
                 >
                   {t === 'BUY_IT_NOW' ? 'Buy it now' : 'Auction'}
@@ -315,45 +854,19 @@ export default function Step8Preview() {
         {/* Shipping */}
         <div>
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Shipping</p>
-          <div className="flex gap-6 text-sm text-gray-800">
+          <div className="flex gap-6 text-sm text-gray-800 flex-wrap">
             <span>{store.shippingService || '—'}</span>
             <span>{store.shippingCost === '0' ? 'Free' : store.shippingCost ? `$${store.shippingCost}` : '—'}</span>
             <span>{store.handlingTime || '—'}</span>
+            {store.acceptReturns && (
+              <span className="text-green-700">{store.returnWindow}-day returns</span>
+            )}
           </div>
         </div>
       </div>
 
-      {publishError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-          {publishError}
-        </div>
-      )}
-
-      {/* Confirm modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 space-y-4">
-            <h3 className="text-xl font-bold text-gray-900">Publish listing?</h3>
-            <p className="text-gray-600">You're about to publish this listing live on eBay. Ready?</p>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-60"
-              >
-                {publishing ? 'Publishing…' : 'Yes, publish'}
-              </button>
-              <button
-                onClick={() => setShowConfirm(false)}
-                disabled={publishing}
-                className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Publish modal */}
+      {renderPublishModal()}
     </div>
   );
 }

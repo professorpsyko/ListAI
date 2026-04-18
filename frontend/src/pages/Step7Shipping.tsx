@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useListingStore } from '../store/listingStore';
@@ -35,6 +35,9 @@ export default function Step7Shipping() {
   const store = useListingStore();
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const shippingSuggestionStatus = useListingStore((s) => s.shippingSuggestionStatus);
+  // Track which services had their cost auto-filled by AI so we can show the badge
+  const [aiFilledService, setAiFilledService] = useState<string | null>(null);
 
   const isFreeShipping = store.shippingService === "Free shipping (I'll build it into the price)";
 
@@ -45,11 +48,9 @@ export default function Step7Shipping() {
 
     if (!store.shippingService && suggestion) {
       if (autoFill) {
-        store.setShippingService(suggestion.shippingService);
+        store.setShippingService(suggestion.recommendedService);
         store.setShippingCost(String(suggestion.estimatedCost));
         store.setHandlingTime(suggestion.handlingTime);
-      } else {
-        // Show suggestion as hint but don't auto-fill
       }
     }
   }, [settings, store.shippingSuggestion]);
@@ -87,17 +88,31 @@ export default function Step7Shipping() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">
               Shipping service <span className="text-red-500">*</span>
             </label>
+            {shippingSuggestionStatus === 'LOADING' && !suggestion && (
+              <p className="text-xs text-blue-400 mb-2 flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                AI estimating costs…
+              </p>
+            )}
             {suggestion && (
               <p className="text-xs text-gray-400 mb-2">
-                Suggested: {suggestion.shippingService}
+                AI recommends: <span className="font-medium text-gray-600">{suggestion.recommendedService}</span>
               </p>
             )}
             <select
               value={store.shippingService}
               onChange={(e) => {
-                store.setShippingService(e.target.value);
-                if (e.target.value === "Free shipping (I'll build it into the price)") {
+                const svc = e.target.value;
+                store.setShippingService(svc);
+                if (svc === "Free shipping (I'll build it into the price)") {
                   store.setShippingCost('0');
+                  setAiFilledService(null);
+                } else if (suggestion?.costEstimates?.[svc] != null) {
+                  // Auto-fill AI estimate for this service
+                  store.setShippingCost(String(suggestion.costEstimates[svc]));
+                  setAiFilledService(svc);
+                } else {
+                  setAiFilledService(null);
                 }
               }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 bg-white"
@@ -128,12 +143,20 @@ export default function Step7Shipping() {
         {/* Shipping cost + returns */}
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Shipping cost <span className="text-red-500">*</span>
-            </label>
-            {suggestion && !isFreeShipping && (
-              <p className="text-xs text-gray-400 mb-2">
-                Suggested: ~${suggestion.estimatedCost.toFixed(2)}
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-semibold text-gray-700">
+                Shipping cost <span className="text-red-500">*</span>
+              </label>
+              {aiFilledService && store.shippingService === aiFilledService && !isFreeShipping && (
+                <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2 py-0.5 font-medium">
+                  AI estimate
+                </span>
+              )}
+            </div>
+            {shippingSuggestionStatus === 'LOADING' && !suggestion && store.shippingService && !isFreeShipping && (
+              <p className="text-xs text-blue-400 mb-2 flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                Estimating cost…
               </p>
             )}
             {isFreeShipping ? (
@@ -148,11 +171,18 @@ export default function Step7Shipping() {
                   min="0"
                   step="0.01"
                   value={store.shippingCost}
-                  onChange={(e) => store.setShippingCost(e.target.value)}
+                  onChange={(e) => {
+                    store.setShippingCost(e.target.value);
+                    // User edited the value — remove the AI badge
+                    setAiFilledService(null);
+                  }}
                   placeholder="0.00"
                   className="w-full border border-gray-300 rounded-lg pl-7 pr-4 py-2.5 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+            )}
+            {suggestion?.reasoning && aiFilledService === store.shippingService && (
+              <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">{suggestion.reasoning}</p>
             )}
           </div>
 

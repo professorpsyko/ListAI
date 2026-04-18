@@ -85,6 +85,11 @@ export interface PublishResult {
 }
 
 export async function publishListing(data: ListingData): Promise<PublishResult> {
+  const isSandbox = config.EBAY_SANDBOX_MODE === 'true';
+  if (isSandbox) {
+    console.warn('[eBay] ⚠️  SANDBOX mode is ON — listing will NOT appear on real eBay. Set EBAY_SANDBOX_MODE=false to publish live.');
+  }
+
   const conditionId = CONDITION_MAP[data.condition] ?? 4000;
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
@@ -96,11 +101,9 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
 
   const listingTypeXml = data.listingType === 'AUCTION'
     ? `<ListingType>Chinese</ListingType>
-       <ListingDuration>Days_${data.auctionDuration ?? 7}</ListingDuration>
-       <StartPrice>${data.startingBid ?? 0.99}</StartPrice>`
+       <ListingDuration>Days_${data.auctionDuration ?? 7}</ListingDuration>`
     : `<ListingType>FixedPriceItem</ListingType>
-       <ListingDuration>GTC</ListingDuration>
-       <BuyItNowPrice>${data.price}</BuyItNowPrice>`;
+       <ListingDuration>GTC</ListingDuration>`;
 
   const returnsXml = data.acceptReturns
     ? `<ReturnPolicy>
@@ -142,7 +145,6 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
       ${pictureDetails}
     </PictureDetails>
     ${returnsXml}
-    <PaymentMethods>PayPal</PaymentMethods>
   </Item>
 </AddItemRequest>`;
 
@@ -162,16 +164,24 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
   const parsed = await parseStringPromise(response.data, { explicitArray: false });
   const result = parsed.AddItemResponse;
 
-  if (result.Ack === 'Failure' || result.Errors) {
-    const errors = Array.isArray(result.Errors) ? result.Errors : [result.Errors];
+  if (result.Ack === 'Failure' || (result.Ack !== 'Success' && result.Ack !== 'Warning')) {
+    const errors = result.Errors
+      ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors])
+      : [];
     const firstError = errors[0];
     const code = parseInt(firstError?.ErrorCode ?? '0', 10);
-    const rawMessage = firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown error';
+    const rawMessage = firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown eBay error';
+    console.error('[eBay] Publish failed:', { ack: result.Ack, code, rawMessage, errors });
     throw new Error(mapEbayError(code, rawMessage));
   }
 
+  if (result.Ack === 'Warning' && result.Errors) {
+    const warnings = Array.isArray(result.Errors) ? result.Errors : [result.Errors];
+    console.warn('[eBay] Publish warnings:', warnings.map((w: { ShortMessage?: string }) => w.ShortMessage));
+  }
+
   const itemId = result.ItemID;
-  const isSandbox = config.EBAY_SANDBOX_MODE === 'true';
+  console.log(`[eBay] ✓ Published item ${itemId} (${isSandbox ? 'SANDBOX' : 'PRODUCTION'})`);
   const listingUrl = isSandbox
     ? `https://sandbox.ebay.com/itm/${itemId}`
     : `https://www.ebay.com/itm/${itemId}`;

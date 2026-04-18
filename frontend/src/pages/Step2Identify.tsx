@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
-import { identifyItem, retryIdentify, triggerPriceResearch } from '../lib/api';
+import { identifyItem, retryIdentify, triggerPriceResearch, triggerShippingSuggestion } from '../lib/api';
 import type { IdentificationResult } from '../store/listingStore';
 import { getDevPin, clearDevPin } from '../lib/devPins';
 import { useStepAction } from '../hooks/useStepAction';
@@ -259,6 +259,8 @@ export default function Step2Identify() {
     }
 
     triggerPriceResearch(id).catch(() => {});
+    store.setShippingSuggestionStatus('LOADING');
+    triggerShippingSuggestion(id).catch(() => { store.setShippingSuggestionStatus('FAILED'); });
     store.setCurrentStep(3);
     navigate(`/listing/${id}/step/3`);
   }
