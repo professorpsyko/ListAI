@@ -24,6 +24,8 @@ export default function Step2Identify() {
   const [isSerialSearch, setIsSerialSearch] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [labelZoomed, setLabelZoomed] = useState(false);
+  const [labelRect, setLabelRect] = useState<DOMRect | null>(null);
+  const labelCardRef = useRef<HTMLDivElement>(null);
   const [usingPin, setUsingPin] = useState(false);
 
   /**
@@ -483,12 +485,19 @@ export default function Step2Identify() {
           {/* RIGHT: label photo + Something look off? */}
           <div className="col-span-2 space-y-3 sticky top-4">
 
-            {/* Label photo — hover zooms into a fixed overlay so input focus is never stolen */}
+            {/* Label photo
+                - hover triggers a zoom that appears immediately to the LEFT of this card
+                - pointer-events-none so the serial input never loses focus
+                - getBoundingClientRect pins the zoom right against the thumbnail edge */}
             {store.labelPhotoUrl && (
               <>
                 <div
+                  ref={labelCardRef}
                   className="bg-white border border-gray-200 rounded-2xl overflow-hidden cursor-zoom-in"
-                  onMouseEnter={() => setLabelZoomed(true)}
+                  onMouseEnter={() => {
+                    if (labelCardRef.current) setLabelRect(labelCardRef.current.getBoundingClientRect());
+                    setLabelZoomed(true);
+                  }}
                   onMouseLeave={() => setLabelZoomed(false)}
                 >
                   <div className="px-3 pt-3 pb-1.5 flex items-center justify-between">
@@ -505,26 +514,33 @@ export default function Step2Identify() {
                     alt="Label"
                     className="w-full object-contain max-h-52 bg-gray-50"
                   />
-                  <p className="px-3 py-2 text-xs text-gray-400">Compare with serial / model detected above</p>
+                  <p className="px-3 py-2 text-xs text-gray-400">Hover to zoom — compare serial with what AI detected</p>
                 </div>
 
-                {/* Zoomed overlay — fixed so overflow:hidden on parent can't clip it.
-                    pointer-events-none means the input keeps focus even while hovering. */}
-                {labelZoomed && (
-                  <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center p-12">
-                    <div className="relative">
-                      <img
-                        src={store.labelPhotoUrl}
-                        alt="Label zoomed"
-                        className="max-w-2xl max-h-[80vh] w-auto object-contain rounded-2xl"
-                        style={{
-                          boxShadow: '0 30px 80px rgba(0,0,0,0.45), 0 0 0 4px white, 0 0 0 5px rgba(0,0,0,0.08)',
-                        }}
-                      />
-                      <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded-lg backdrop-blur-sm">
-                        Move mouse away to close
-                      </div>
-                    </div>
+                {/* Zoomed overlay — positioned flush to the LEFT of the thumbnail card.
+                    pointer-events-none: mouse stays over thumbnail, input keeps focus. */}
+                {labelZoomed && labelRect && (
+                  <div
+                    className="fixed z-50 pointer-events-none"
+                    style={{
+                      // Right edge of zoom = left edge of thumbnail card minus gap
+                      right: window.innerWidth - labelRect.left + 12,
+                      // Top-align with the thumbnail card, clamped so it doesn't go off-screen
+                      top: Math.max(labelRect.top, 12),
+                      // Don't overflow left edge of screen
+                      maxWidth: labelRect.left - 24,
+                      maxHeight: '80vh',
+                    }}
+                  >
+                    <img
+                      src={store.labelPhotoUrl}
+                      alt="Label zoomed"
+                      className="rounded-2xl object-contain w-full h-full"
+                      style={{
+                        maxHeight: '80vh',
+                        boxShadow: '0 25px 60px rgba(0,0,0,0.45), 0 0 0 4px white, 0 0 0 5px rgba(0,0,0,0.1)',
+                      }}
+                    />
                   </div>
                 )}
               </>
