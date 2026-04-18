@@ -623,11 +623,11 @@ export default function Step2Identify() {
             )}
 
             {/* Two columns: source links left, image grid right */}
-            <div className="grid grid-cols-5 gap-5">
+            <div className="grid grid-cols-9 gap-5">
 
               {/* Left: source links */}
               {researchLinks.length > 0 && (
-                <div className={clsx('space-y-2', (identification.researchImages ?? []).length > 0 ? 'col-span-3' : 'col-span-5')}>
+                <div className={clsx('space-y-2', (identification.researchImages ?? []).length > 0 ? 'col-span-4' : 'col-span-9')}>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Sources — click to verify</p>
                   {researchLinks.map((link, i) => {
                     let domain = link.url;
@@ -654,7 +654,7 @@ export default function Step2Identify() {
 
               {/* Right: Google Images grid — visual confirmation */}
               {(identification.researchImages ?? []).length > 0 && (
-                <div className={clsx(researchLinks.length > 0 ? 'col-span-2' : 'col-span-5')}>
+                <div className={clsx(researchLinks.length > 0 ? 'col-span-5' : 'col-span-9')}>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Image results — visual check</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(identification.researchImages ?? []).map((img, i) => (
