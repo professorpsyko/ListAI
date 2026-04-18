@@ -1,19 +1,61 @@
-import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSettings, updateSettings, getMe, clearStyleMemory, importHistory } from '../lib/api';
+import { getSettings, updateSettings, getMe, clearStyleMemory, importHistory, getEbayStatus, getEbayAuthUrl, disconnectEbay } from '../lib/api';
 
 export default function SettingsPage() {
   const { user } = useUser();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [ebayConnecting, setEbayConnecting] = useState(false);
+  const [ebayFeedback, setEbayFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const { data: ebayStatus, refetch: refetchEbay } = useQuery({
+    queryKey: ['ebay-status'],
+    queryFn: getEbayStatus,
+  });
+
+  const disconnectMut = useMutation({
+    mutationFn: disconnectEbay,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ebay-status'] });
+      setEbayFeedback({ type: 'success', message: 'eBay account disconnected.' });
+    },
+  });
+
+  // Handle redirect back from eBay OAuth callback
+  useEffect(() => {
+    const ebayParam = searchParams.get('ebay');
+    if (ebayParam === 'connected') {
+      setEbayFeedback({ type: 'success', message: '✓ eBay account connected! You can now publish listings.' });
+      refetchEbay();
+      setSearchParams({}, { replace: true });
+    } else if (ebayParam === 'error') {
+      const msg = searchParams.get('message') ?? 'Connection failed. Please try again.';
+      setEbayFeedback({ type: 'error', message: msg });
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
+
+  async function handleConnectEbay() {
+    setEbayConnecting(true);
+    setEbayFeedback(null);
+    try {
+      const { url } = await getEbayAuthUrl();
+      // Redirect current page — eBay will send them back to /settings?ebay=connected
+      window.location.href = url;
+    } catch {
+      setEbayFeedback({ type: 'error', message: 'Could not get eBay authorization URL. Check that EBAY_RUNAME is set in Railway.' });
+      setEbayConnecting(false);
+    }
+  }
 
   const updateMut = useMutation({
     mutationFn: updateSettings,
@@ -66,13 +108,60 @@ export default function SettingsPage() {
         {/* eBay Connection */}
         <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
           <h2 className="font-semibold text-gray-800 text-lg">eBay connection</h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Connected account</p>
-              <p className="text-sm text-gray-500 mt-0.5">Token configured via EBAY_AUTH_TOKEN</p>
+
+          {ebayFeedback && (
+            <div className={`rounded-lg px-4 py-3 text-sm ${
+              ebayFeedback.type === 'success'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}>
+              {ebayFeedback.message}
             </div>
-            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Connected</span>
-          </div>
+          )}
+
+          {ebayStatus?.connected ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">eBay account connected</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Token auto-refreshes · expires {ebayStatus.tokenExpiry
+                    ? new Date(ebayStatus.tokenExpiry).toLocaleDateString()
+                    : 'unknown'}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Connected</span>
+                <button
+                  onClick={() => disconnectMut.mutate()}
+                  disabled={disconnectMut.isPending}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Connect your eBay seller account</p>
+                <p className="text-xs text-gray-400 mt-0.5">Required to publish listings. Tokens refresh automatically.</p>
+              </div>
+              <button
+                onClick={handleConnectEbay}
+                disabled={ebayConnecting}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60 flex items-center gap-2"
+              >
+                {ebayConnecting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Redirecting…
+                  </>
+                ) : (
+                  'Connect eBay Account'
+                )}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Listing defaults */}

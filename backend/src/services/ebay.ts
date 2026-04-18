@@ -87,16 +87,22 @@ export interface PublishResult {
   listingUrl: string;
 }
 
-export async function publishListing(data: ListingData): Promise<PublishResult> {
+export async function publishListing(data: ListingData, overrideToken?: string): Promise<PublishResult> {
   const isSandbox = config.EBAY_SANDBOX_MODE === 'true';
   if (isSandbox) {
     console.warn('[eBay] ⚠️  SANDBOX mode is ON — listing will NOT appear on real eBay. Set EBAY_SANDBOX_MODE=false to publish live.');
   }
 
+  // Use per-user OAuth token when available; fall back to env var for legacy setups
+  const token = overrideToken || config.EBAY_AUTH_TOKEN;
+  if (!token) {
+    throw new Error('No eBay token available. Please connect your eBay account in Settings.');
+  }
+
   // Detect token type:
-  //  - Legacy Auth'n'Auth tokens start with "v^1.1#" and go inside <eBayAuthToken> in the XML
-  //  - Modern OAuth user access tokens go in the Authorization: Bearer header (NOT in XML)
-  const isLegacyToken = config.EBAY_AUTH_TOKEN.startsWith('v^1.1');
+  //  - Legacy Auth'n'Auth tokens start with "v^1.1#" and go in <eBayAuthToken> XML element
+  //  - Modern OAuth user access tokens go in Authorization: Bearer header (NOT in XML)
+  const isLegacyToken = token.startsWith('v^1.1');
   console.log(`[eBay] Token type: ${isLegacyToken ? 'legacy Auth\'n\'Auth (XML)' : 'OAuth Bearer (header)'}`);
 
   const conditionId = CONDITION_MAP[data.condition] ?? 4000;
@@ -128,7 +134,7 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
-    ${isLegacyToken ? `<eBayAuthToken>${config.EBAY_AUTH_TOKEN}</eBayAuthToken>` : ''}
+    ${isLegacyToken ? `<eBayAuthToken>${token}</eBayAuthToken>` : ''}
   </RequesterCredentials>
   <Item>
     <Title>${escapeXml(data.title.slice(0, 80))}</Title>
@@ -167,7 +173,7 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
       'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
       'Content-Type': 'text/xml',
       // OAuth tokens go in the Authorization header; legacy tokens are in the XML body
-      ...(!isLegacyToken && { 'Authorization': `Bearer ${config.EBAY_AUTH_TOKEN}` }),
+      ...(!isLegacyToken && { 'Authorization': `Bearer ${token}` }),
     },
     timeout: 30000,
   });

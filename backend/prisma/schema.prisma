@@ -8,12 +8,15 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  clerkId   String    @unique
-  email     String    @unique
-  createdAt DateTime  @default(now())
-  settings  Settings?
-  listings  Listing[]
+  id               String    @id @default(cuid())
+  clerkId          String    @unique
+  email            String    @unique
+  createdAt        DateTime  @default(now())
+  ebayAccessToken  String?
+  ebayRefreshToken String?
+  ebayTokenExpiry  DateTime?
+  settings         Settings?
+  listings         Listing[]
 }
 
 model Settings {

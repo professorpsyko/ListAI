@@ -5,6 +5,7 @@ import { parse as csvParse } from 'csv-parse/sync';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { clearUserStyleMemory, getUserMemoryCount, importFromCsv } from '../services/rag';
+import { getEbayAuthUrl } from '../services/ebay-oauth';
 
 const router = Router();
 const upload = multer({ dest: '/tmp/listai-csv/' });
@@ -113,6 +114,38 @@ router.post(
 router.delete('/me/style-memory', requireAuth, async (req: Request, res: Response) => {
   const auth = req as AuthenticatedRequest;
   await clearUserStyleMemory(auth.user.id);
+  res.json({ success: true });
+});
+
+// ─── eBay OAuth ────────────────────────────────────────────────────────────────
+
+// Get the eBay authorization URL to redirect the user to
+router.get('/me/ebay/auth-url', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const url = getEbayAuthUrl(auth.user.id);
+  res.json({ url });
+});
+
+// Get eBay connection status for the current user
+router.get('/me/ebay/status', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const user = await prisma.user.findUnique({
+    where: { id: auth.user.id },
+    select: { ebayAccessToken: true, ebayTokenExpiry: true },
+  });
+  res.json({
+    connected: !!user?.ebayAccessToken,
+    tokenExpiry: user?.ebayTokenExpiry ?? null,
+  });
+});
+
+// Disconnect eBay account
+router.delete('/me/ebay/disconnect', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  await prisma.user.update({
+    where: { id: auth.user.id },
+    data: { ebayAccessToken: null, ebayRefreshToken: null, ebayTokenExpiry: null },
+  });
   res.json({ success: true });
 });
 

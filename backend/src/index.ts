@@ -8,6 +8,7 @@ import { clerkAuth } from './middleware/auth';
 import { errorHandler } from './middleware/error';
 import listingsRouter from './routes/listings';
 import usersRouter from './routes/users';
+import ebayCallbackRouter from './routes/ebay-callback';
 import { startImageWorker } from './workers/image-worker';
 import { startPricingWorker } from './workers/pricing-worker';
 import { config } from './config';
@@ -39,6 +40,10 @@ app.use(
   }),
 );
 app.use(express.json({ limit: '10mb' }));
+
+// eBay OAuth callback — public, must be registered BEFORE clerkAuth
+app.use('/api/ebay', ebayCallbackRouter);
+
 app.use(clerkAuth);
 
 // Routes

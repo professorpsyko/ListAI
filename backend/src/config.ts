@@ -29,8 +29,10 @@ const envSchema = z.object({
   EBAY_APP_ID: z.string().min(1),
   EBAY_DEV_ID: z.string().min(1),
   EBAY_CERT_ID: z.string().min(1),
-  EBAY_AUTH_TOKEN: z.string().min(1),
-  EBAY_SANDBOX_MODE: z.string().default('true'),
+  EBAY_AUTH_TOKEN: z.string().default(''),      // Legacy fallback; prefer OAuth flow
+  EBAY_SANDBOX_MODE: z.string().default('false'),
+  EBAY_RUNAME: z.string().default(''),          // RuName registered in eBay developer portal
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
 
   // Database
   DATABASE_URL: z.string().min(1),

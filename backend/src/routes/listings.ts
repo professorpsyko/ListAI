@@ -11,6 +11,7 @@ import { identifyItem } from '../services/vision';
 import { generateTitle, generateDescription } from '../services/listing-ai';
 import { upsertListingMemory } from '../services/rag';
 import { publishListing } from '../services/ebay';
+import { refreshAccessToken } from '../services/ebay-oauth';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -417,6 +418,37 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
 
   const identification = listing.rawIdentification as Record<string, string | null> | null;
 
+  // Resolve the eBay token: prefer user's stored OAuth token (auto-refresh if expiring),
+  // fall back to the EBAY_AUTH_TOKEN env var for legacy setups.
+  let ebayToken: string | undefined;
+  const userRecord = await prisma.user.findUnique({
+    where: { id: auth.user.id },
+    select: { ebayAccessToken: true, ebayRefreshToken: true, ebayTokenExpiry: true },
+  });
+
+  if (userRecord?.ebayAccessToken && userRecord?.ebayRefreshToken) {
+    const fiveMinutes = 5 * 60 * 1000;
+    const needsRefresh = !userRecord.ebayTokenExpiry ||
+      userRecord.ebayTokenExpiry.getTime() < Date.now() + fiveMinutes;
+
+    if (needsRefresh) {
+      try {
+        const refreshed = await refreshAccessToken(userRecord.ebayRefreshToken);
+        await prisma.user.update({
+          where: { id: auth.user.id },
+          data: { ebayAccessToken: refreshed.accessToken, ebayTokenExpiry: refreshed.expiresAt },
+        });
+        ebayToken = refreshed.accessToken;
+        console.log('[eBay] Token auto-refreshed');
+      } catch (refreshErr) {
+        console.error('[eBay] Token refresh failed:', (refreshErr as Error).message);
+        ebayToken = userRecord.ebayAccessToken; // try the old one, may still work
+      }
+    } else {
+      ebayToken = userRecord.ebayAccessToken;
+    }
+  }
+
   try {
     const result = await publishListing({
       title: listing.itemTitle || '',
@@ -434,7 +466,7 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
       acceptReturns: listing.acceptReturns,
       returnWindow: listing.returnWindow || undefined,
       imageUrls: listing.processedImageUrls.length ? listing.processedImageUrls : listing.imageUrls,
-    });
+    }, ebayToken);
 
     await prisma.listing.update({
       where: { id: req.params.id },

@@ -76,6 +76,10 @@ export const publishListing = (id: string) =>
 
 export const getMe = () => api.get('/users/me').then((r) => r.data);
 
+export const getEbayStatus = () => api.get('/users/me/ebay/status').then((r) => r.data);
+export const getEbayAuthUrl = () => api.get('/users/me/ebay/auth-url').then((r) => r.data);
+export const disconnectEbay = () => api.delete('/users/me/ebay/disconnect').then((r) => r.data);
+
 export const syncEmail = (email: string) =>
   api.post('/users/me/sync', { email }).then((r) => r.data);
 
