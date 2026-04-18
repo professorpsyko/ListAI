@@ -517,27 +517,30 @@ export default function Step2Identify() {
                   <p className="px-3 py-2 text-xs text-gray-400">Hover to zoom — compare serial with what AI detected</p>
                 </div>
 
-                {/* Zoomed overlay — positioned flush to the LEFT of the thumbnail card.
+                {/* Zoomed overlay — anchored BELOW the label card so it never covers
+                    the serial number input (which lives in the left col at the same height).
                     pointer-events-none: mouse stays over thumbnail, input keeps focus. */}
                 {labelZoomed && labelRect && (
                   <div
                     className="fixed z-50 pointer-events-none"
                     style={{
-                      // Right edge of zoom = left edge of thumbnail card minus gap
-                      right: window.innerWidth - labelRect.left + 12,
-                      // Top-align with the thumbnail card, clamped so it doesn't go off-screen
-                      top: Math.max(labelRect.top, 12),
-                      // Don't overflow left edge of screen
-                      maxWidth: labelRect.left - 24,
-                      maxHeight: '80vh',
+                      // Top of zoom = bottom of label card + small gap
+                      top: labelRect.bottom + 8,
+                      // Right-align with the label card, let it expand leftward
+                      right: window.innerWidth - labelRect.right,
+                      // Expand left but don't reach the screen edge
+                      maxWidth: labelRect.right - 16,
+                      // Don't run off the bottom of the screen
+                      maxHeight: window.innerHeight - labelRect.bottom - 24,
                     }}
                   >
                     <img
                       src={store.labelPhotoUrl}
                       alt="Label zoomed"
-                      className="rounded-2xl object-contain w-full h-full"
+                      className="rounded-2xl object-contain"
                       style={{
-                        maxHeight: '80vh',
+                        width: '100%',
+                        maxHeight: window.innerHeight - labelRect.bottom - 24,
                         boxShadow: '0 25px 60px rgba(0,0,0,0.45), 0 0 0 4px white, 0 0 0 5px rgba(0,0,0,0.1)',
                       }}
                     />
