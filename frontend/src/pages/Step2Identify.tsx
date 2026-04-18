@@ -29,8 +29,8 @@ export default function Step2Identify() {
     imgX: number; imgY: number; // cursor position inside the rendered image pixels
     imgW: number; imgH: number; // actual rendered image dimensions (respects object-contain)
   } | null>(null);
-  const LENS_SIZE = 130; // px — square lens width/height
-  const LENS_ZOOM = 4;   // how many times to magnify
+  const LENS_SIZE = 260; // px — square lens width/height
+  const LENS_ZOOM = 4.8; // how many times to magnify
   const [usingPin, setUsingPin] = useState(false);
 
   /**
