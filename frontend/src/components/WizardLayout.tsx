@@ -1,9 +1,11 @@
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useListingStore } from '../store/listingStore';
 import { useJobPolling } from '../hooks/useJobPolling';
 import DevPanel from './DevPanel';
+import { StepActionContext, type StepActionConfig } from '../contexts/StepActionContext';
 import clsx from 'clsx';
 
 const DEV_EMAIL = 'benjamin.marshall95@gmail.com';
@@ -41,6 +43,7 @@ export default function WizardLayout() {
   const currentStep = store.currentStep;
   const imageJobStatus = store.imageJobStatus;
   const isDevUser = user?.primaryEmailAddress?.emailAddress === DEV_EMAIL;
+  const [stepAction, setStepAction] = useState<StepActionConfig | null>(null);
 
   // Background polling — runs continuously while in wizard
   useJobPolling(id ?? null);
@@ -58,6 +61,7 @@ export default function WizardLayout() {
   }
 
   return (
+    <StepActionContext.Provider value={{ setAction: setStepAction }}>
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Top nav */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -134,11 +138,32 @@ export default function WizardLayout() {
         </div>
       </header>
 
+      {/* Step action bar — sticky below header, populated by each step */}
+      {stepAction && (
+        <div className="sticky top-14 z-10 bg-white border-b border-gray-100 shadow-sm">
+          <div className="max-w-4xl mx-auto px-6 py-2.5 flex justify-end">
+            <button
+              onClick={stepAction.onClick}
+              disabled={stepAction.disabled}
+              className={clsx(
+                'px-6 py-2 rounded-lg font-semibold text-sm transition-colors',
+                stepAction.disabled
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : stepAction.activeClassName ?? 'bg-blue-600 hover:bg-blue-700 text-white',
+              )}
+            >
+              {stepAction.label}
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-8">
         <Outlet />
       </main>
 
       {isDevUser && <DevPanel />}
     </div>
+    </StepActionContext.Provider>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { generateTitle, updateListing } from '../lib/api';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 export default function Step5Title() {
@@ -15,6 +16,8 @@ export default function Step5Title() {
   const charCount = store.itemTitle.length;
   const overLimit = charCount > 80;
   const nearLimit = charCount >= 75;
+
+  useStepAction('Next: Description \u2192', !store.itemTitle || overLimit, handleNext);
 
   useEffect(() => {
     // Auto-generate on mount if no title yet
@@ -119,22 +122,6 @@ export default function Step5Title() {
         )}
       </div>
 
-      <div className="flex justify-between pt-4">
-        <button onClick={() => navigate(`/listing/${id}/step/4`)}
-          className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!store.itemTitle || overLimit}
-          className={clsx(
-            'px-8 py-2.5 rounded-lg font-semibold text-white transition-colors',
-            store.itemTitle && !overLimit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed',
-          )}
-        >
-          Next: Description →
-        </button>
-      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useStepAction } from '../hooks/useStepAction';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { uploadPhotos, updateListing } from '../lib/api';
@@ -105,6 +106,7 @@ export default function Step1Photos() {
   const itemsStatus = useUploadStatus(itemsUploading, ITEMS_STAGES);
 
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
+  useStepAction('Next: Identify item \u2192', !canProceed, handleNext);
 
   async function handleLabelFiles(files: FileList | null) {
     if (!files || !files[0] || !id) return;
@@ -489,18 +491,6 @@ export default function Step1Photos() {
         </div>
       )}
 
-      <div className="flex justify-end pt-4">
-        <button
-          onClick={handleNext}
-          disabled={!canProceed}
-          className={clsx(
-            'px-8 py-2.5 rounded-lg font-semibold text-white transition-colors',
-            canProceed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed',
-          )}
-        >
-          Next: Identify item →
-        </button>
-      </div>
     </div>
   );
 }

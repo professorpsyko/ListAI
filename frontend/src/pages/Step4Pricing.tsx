@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useListingStore } from '../store/listingStore';
 import { getSettings, triggerPriceResearch, updateListing } from '../lib/api';
 import { getDevPin, clearDevPin } from '../lib/devPins';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 export default function Step4Pricing() {
@@ -47,6 +48,8 @@ export default function Step4Pricing() {
 
   const isLoading = store.pricingJobStatus === 'QUEUED' || store.pricingJobStatus === 'PROCESSING';
   const pricing = store.pricingResearch;
+
+  useStepAction('Next: Title \u2192', !store.finalPrice, handleNext);
 
   async function handleNext() {
     if (!id || !store.finalPrice) return;
@@ -206,22 +209,6 @@ export default function Step4Pricing() {
         </div>
       </div>
 
-      <div className="flex justify-between pt-4">
-        <button onClick={() => navigate(`/listing/${id}/step/3`)}
-          className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!store.finalPrice}
-          className={clsx(
-            'px-8 py-2.5 rounded-lg font-semibold text-white transition-colors',
-            store.finalPrice ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed',
-          )}
-        >
-          Next: Title →
-        </button>
-      </div>
     </div>
   );
 }

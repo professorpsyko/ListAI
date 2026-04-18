@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useListingStore } from '../store/listingStore';
 import { getSettings, updateListing } from '../lib/api';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 const SHIPPING_SERVICES = [
@@ -54,6 +55,8 @@ export default function Step7Shipping() {
   }, [settings, store.shippingSuggestion]);
 
   const canProceed = !!store.shippingService && (isFreeShipping || !!store.shippingCost);
+
+  useStepAction('Next: Preview \u2192', !canProceed, handleNext);
 
   async function handleNext() {
     if (!id || !canProceed) return;
@@ -196,22 +199,6 @@ export default function Step7Shipping() {
         </div>
       </div>
 
-      <div className="flex justify-between pt-4">
-        <button onClick={() => navigate(`/listing/${id}/step/6`)}
-          className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!canProceed}
-          className={clsx(
-            'px-8 py-2.5 rounded-lg font-semibold text-white transition-colors',
-            canProceed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed',
-          )}
-        >
-          Next: Preview →
-        </button>
-      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { generateDescription, updateListing } from '../lib/api';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 export default function Step6Description() {
@@ -43,6 +44,8 @@ export default function Step6Description() {
   function handleReject() {
     setSuggestionPhase('rejected');
   }
+
+  useStepAction('Next: Shipping \u2192', !store.itemDescription, handleNext);
 
   async function handleNext() {
     if (!id || !store.itemDescription) return;
@@ -152,22 +155,6 @@ export default function Step6Description() {
         </div>
       )}
 
-      <div className="flex justify-between pt-4">
-        <button onClick={() => navigate(`/listing/${id}/step/5`)}
-          className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!store.itemDescription}
-          className={clsx(
-            'px-8 py-2.5 rounded-lg font-semibold text-white transition-colors',
-            store.itemDescription ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed',
-          )}
-        >
-          Next: Shipping →
-        </button>
-      </div>
     </div>
   );
 }

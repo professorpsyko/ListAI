@@ -4,6 +4,7 @@ import { useListingStore } from '../store/listingStore';
 import { identifyItem, retryIdentify, triggerPriceResearch } from '../lib/api';
 import type { IdentificationResult } from '../store/listingStore';
 import { getDevPin, clearDevPin } from '../lib/devPins';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 interface DisplayAlt {
@@ -71,6 +72,23 @@ export default function Step2Identify() {
   const [manualSerial, setManualSerial] = useState('');
 
   const { identification, identificationStatus } = store;
+
+  // Top-level derived values needed for the step action bar (hooks must run unconditionally)
+  const topClaudeSerial = identification?.serialNumber ?? null;
+  const topSerialResolved = identification
+    ? ((topClaudeSerial !== null || userSerial !== undefined) &&
+        !(topClaudeSerial === null && userSerial === undefined && !editingSerial))
+    : false;
+  const topBaseAlts = identification?.alternativeIdentifications?.slice(0, 3) ?? [];
+  const isDone = identificationStatus === 'done' && !!identification && !identification.error;
+  const topActionLabel = !isDone
+    ? 'Confirm item \u2192'
+    : !topSerialResolved
+      ? 'Confirm the serial number above to continue'
+      : selectedAltIndex !== null
+        ? `Use "${topBaseAlts[selectedAltIndex]?.identification ?? ''}" \u2192`
+        : "Yes, that's it \u2192";
+  useStepAction(topActionLabel, !isDone || !topSerialResolved, handleConfirm);
 
   // When a new identification arrives, restore any serial the user explicitly committed
   // so a re-search never silently wipes what they typed.
@@ -723,23 +741,6 @@ export default function Step2Identify() {
           </div>
         )}
 
-        {/* Confirm */}
-        <button
-          onClick={handleConfirm}
-          disabled={!serialResolved}
-          className={clsx(
-            'w-full py-3 font-semibold rounded-xl transition-colors',
-            serialResolved
-              ? 'bg-blue-600 hover:bg-blue-700 text-white'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed',
-          )}
-        >
-          {!serialResolved
-            ? 'Confirm the serial number above to continue'
-            : selectedAltIndex !== null
-              ? `Use "${baseAlts[selectedAltIndex]?.identification}" \u2192`
-              : "Yes, that's it \u2192"}
-        </button>
       </div>
     );
   }

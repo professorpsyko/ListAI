@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { publishListing, updateListing } from '../lib/api';
+import { useStepAction } from '../hooks/useStepAction';
 import clsx from 'clsx';
 
 // ─── Listing score calculation ─────────────────────────────────────────────────
@@ -137,6 +138,13 @@ export default function Step8Preview() {
   const [publishError, setPublishError] = useState<string | null>(null);
 
   const { score, tips } = calcScore(store);
+
+  useStepAction(
+    publishing ? 'Publishing…' : '🚀 Publish to eBay',
+    publishing,
+    () => setShowConfirm(true),
+    'bg-green-600 hover:bg-green-700 text-white',
+  );
 
   const photos = store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls;
   const [showOriginal, setShowOriginal] = useState(false);
@@ -320,19 +328,6 @@ export default function Step8Preview() {
           {publishError}
         </div>
       )}
-
-      <div className="flex justify-between items-center pt-2">
-        <button onClick={() => navigate(`/listing/${id}/step/7`)}
-          className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-          ← Back
-        </button>
-        <button
-          onClick={() => setShowConfirm(true)}
-          className="px-10 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-base transition-colors shadow-sm"
-        >
-          Publish to eBay
-        </button>
-      </div>
 
       {/* Confirm modal */}
       {showConfirm && (
