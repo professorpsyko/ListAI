@@ -98,7 +98,10 @@ export default function Step4Pricing() {
       return;
     }
     if (id && store.pricingJobStatus === 'PENDING') {
-      triggerPriceResearch(id).catch(() => {});
+      store.setPricingJobStatus('QUEUED'); // optimistic — show progress immediately
+      triggerPriceResearch(id).catch(() => {
+        store.setPricingJobStatus('FAILED');
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);

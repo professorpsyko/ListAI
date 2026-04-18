@@ -3,7 +3,8 @@ import multer from 'multer';
 import { z } from 'zod';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
-import { imageQueue, pricingQueue } from '../queues';
+import { imageQueue } from '../queues';
+import { researchPricing } from '../services/pricing';
 import { uploadToCloudinary } from '../services/image';
 import { identifyItem } from '../services/vision';
 import { generateTitle, generateDescription } from '../services/listing-ai';
@@ -270,19 +271,44 @@ router.post('/:id/price-research', requireAuth, async (req: Request, res: Respon
     return;
   }
 
-  const job = await pricingQueue.add('pricing-research', {
-    listingId: req.params.id,
-    itemName,
-    condition: listing.itemCondition || 'Used — good',
-    category: listing.itemCategory || '',
-  });
+  const listingId = req.params.id;
+  const condition = listing.itemCondition || 'Used — good';
+  const category = listing.itemCategory || '';
 
+  // Mark as queued and respond immediately — research runs in the background
   await prisma.listing.update({
-    where: { id: req.params.id },
-    data: { pricingJobId: job.id ?? null, pricingJobStatus: 'QUEUED' },
+    where: { id: listingId },
+    data: { pricingJobStatus: 'QUEUED' },
   });
+  res.json({ status: 'QUEUED' });
 
-  res.json({ jobId: job.id });
+  // Fire-and-forget: no BullMQ/Redis dependency
+  setImmediate(async () => {
+    try {
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: { pricingJobStatus: 'PROCESSING' },
+      });
+
+      const result = await researchPricing({ itemName, condition, category });
+
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          pricingResearch: JSON.parse(JSON.stringify(result)),
+          suggestedPrice: result.suggestedPrice,
+          pricingJobStatus: 'COMPLETE',
+        },
+      });
+      console.log(`[Pricing] Done for listing ${listingId}. Suggested: $${result.suggestedPrice}`);
+    } catch (err) {
+      console.error(`[Pricing] Failed for listing ${listingId}:`, (err as Error).message);
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: { pricingJobStatus: 'FAILED' },
+      }).catch(console.error);
+    }
+  });
 });
 
 // Generate title
