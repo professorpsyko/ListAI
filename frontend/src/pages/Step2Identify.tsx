@@ -35,10 +35,13 @@ export default function Step2Identify() {
   const [usingPin, setUsingPin] = useState(false);
 
   /**
-   * Index into identification.alternativeIdentifications that is currently
-   * "swapped" to the main card slot. null = original identification is main.
+   * Two-phase alt selection:
+   *   pendingAltIndex — phase 1: user clicked an alt, showing "confirm re-search?" prompt
+   *   null            — nothing pending
    */
-  const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null);
+  const [pendingAltIndex, setPendingAltIndex] = useState<number | null>(null);
+  // kept for handleConfirm compatibility (always null in normal flow now)
+  const [selectedAltIndex] = useState<number | null>(null);
 
   /**
    * Serial number state:
@@ -79,21 +82,18 @@ export default function Step2Identify() {
     ? ((topClaudeSerial !== null || userSerial !== undefined) &&
         !(topClaudeSerial === null && userSerial === undefined && !editingSerial))
     : false;
-  const topBaseAlts = identification?.alternativeIdentifications?.slice(0, 3) ?? [];
   const isDone = identificationStatus === 'done' && !!identification && !identification.error;
   const topActionLabel = !isDone
     ? 'Confirm item \u2192'
     : !topSerialResolved
       ? 'Confirm the serial number above to continue'
-      : selectedAltIndex !== null
-        ? `Use "${topBaseAlts[selectedAltIndex]?.identification ?? ''}" \u2192`
-        : "Yes, that's it \u2192";
+      : "Yes, that's it \u2192";
   useStepAction(topActionLabel, !isDone || !topSerialResolved, handleConfirm);
 
   // When a new identification arrives, restore any serial the user explicitly committed
   // so a re-search never silently wipes what they typed.
   useEffect(() => {
-    setSelectedAltIndex(null);
+    setPendingAltIndex(null);
     setEditingSerial(false);
     if (pendingSerialRef.current !== null) {
       // Serial-triggered re-search just finished
@@ -194,6 +194,31 @@ export default function Step2Identify() {
       store.setIdentification(result);
       store.setIdentificationStatus(result.error ? 'error' : 'done');
       setRetryCount((c) => c + 1);
+      setDiffNote('');
+    } catch {
+      store.setIdentificationStatus('error');
+    } finally {
+      setIsRetrying(false);
+    }
+  }
+
+  /**
+   * Phase 2 of alt selection: user confirmed they want to re-search using
+   * the selected alternative's name as the definitive identification.
+   * Returns fresh research links + images for that specific item.
+   */
+  async function handleAltConfirm(alt: DisplayAlt) {
+    if (!id) return;
+    setPendingAltIndex(null);
+    setIsRetrying(true);
+    try {
+      const result: IdentificationResult = await retryIdentify(
+        id,
+        `The correct identification for this item is: "${alt.identification}". Please confirm this identification and search for fresh research links and product images specifically for this exact item.`,
+      );
+      store.setIdentification(result);
+      store.setIdentificationStatus(result.error ? 'error' : 'done');
+      setRetryCount(0);
       setDiffNote('');
     } catch {
       store.setIdentificationStatus('error');
@@ -353,29 +378,12 @@ export default function Step2Identify() {
     const baseAlts = identification.alternativeIdentifications?.slice(0, 3) ?? [];
     const researchLinks = identification.researchLinks ?? [];
 
-    // ── Derived display values based on which card is selected ──────────────
-    const mainDisplayName =
-      selectedAltIndex !== null
-        ? (baseAlts[selectedAltIndex]?.identification ?? identification.identification)
-        : identification.identification;
-
-    const mainDisplayConfidence =
-      selectedAltIndex !== null
-        ? (baseAlts[selectedAltIndex]?.confidence ?? identification.confidence)
-        : identification.confidence;
-
     const displayAlts: DisplayAlt[] =
-      selectedAltIndex !== null
-        ? [
-            { identification: identification.identification, confidence: identification.confidence, originalAltIndex: null },
-            ...baseAlts
-              .map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }))
-              .filter((item) => item.originalAltIndex !== selectedAltIndex),
-          ]
-        : baseAlts.map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }));
+      baseAlts.map((alt, i) => ({ identification: alt.identification, confidence: alt.confidence, originalAltIndex: i }));
 
     function handleAltClick(alt: DisplayAlt) {
-      setSelectedAltIndex(alt.originalAltIndex);
+      // Phase 1: select the alt — show the confirm re-search prompt
+      setPendingAltIndex(alt.originalAltIndex);
     }
 
     function confidenceBadgeClass(c: number) {
@@ -417,9 +425,9 @@ export default function Step2Identify() {
             {/* Main identification card */}
             <div className="w-full p-5 rounded-2xl border-2 border-blue-500 bg-white shadow-sm">
               <div className="flex items-start justify-between mb-3">
-                <h3 className="text-lg font-semibold text-gray-900 leading-snug pr-2">{mainDisplayName}</h3>
-                <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(mainDisplayConfidence))}>
-                  {mainDisplayConfidence}%
+                <h3 className="text-lg font-semibold text-gray-900 leading-snug pr-2">{identification.identification}</h3>
+                <span className={clsx('flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium', confidenceBadgeClass(identification.confidence))}>
+                  {identification.confidence}%
                 </span>
               </div>
 
@@ -521,25 +529,61 @@ export default function Step2Identify() {
               )}
             </div>
 
-            {/* Alternatives */}
+            {/* Alternatives — two-phase selection */}
             {displayAlts.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other possibilities — tap to swap</p>
-                {displayAlts.map((alt) => (
-                  <button
-                    key={alt.originalAltIndex ?? 'original'}
-                    onClick={() => handleAltClick(alt)}
-                    className="w-full text-left p-3 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm transition-all"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-gray-800 leading-snug">{alt.identification}</p>
-                      <span className={clsx('flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium', confidenceBadgeClass(alt.confidence))}>
-                        {alt.confidence}%
-                      </span>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other possibilities</p>
+                {displayAlts.map((alt) => {
+                  const isPending = pendingAltIndex === alt.originalAltIndex;
+                  return (
+                    <div
+                      key={alt.originalAltIndex ?? 'original'}
+                      className={clsx(
+                        'rounded-xl border-2 bg-white transition-all',
+                        isPending
+                          ? 'border-amber-400 shadow-md'
+                          : 'border-gray-200 hover:border-blue-300 hover:shadow-sm cursor-pointer',
+                      )}
+                      onClick={() => { if (!isPending) handleAltClick(alt); }}
+                    >
+                      {/* Card header — always visible */}
+                      <div className="flex items-start justify-between gap-2 p-3">
+                        <p className="text-sm font-medium text-gray-800 leading-snug">{alt.identification}</p>
+                        <span className={clsx('flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium', confidenceBadgeClass(alt.confidence))}>
+                          {alt.confidence}%
+                        </span>
+                      </div>
+
+                      {/* Phase-1 confirmation panel */}
+                      {isPending && (
+                        <div className="border-t border-amber-200 bg-amber-50 px-3 py-2.5 rounded-b-xl space-y-2">
+                          <p className="text-xs text-amber-800 font-medium">
+                            Re-search for this item? This will update the research and images below.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); void handleAltConfirm(alt); }}
+                              className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors"
+                            >
+                              Yes, search for this →
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPendingAltIndex(null); }}
+                              className="px-3 py-1.5 border border-amber-300 text-amber-700 text-xs rounded-lg hover:bg-amber-100 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Phase-0 hint */}
+                      {!isPending && (
+                        <p className="px-3 pb-2.5 text-xs text-blue-500">Tap to select</p>
+                      )}
                     </div>
-                    <p className="text-xs text-blue-500 mt-1">Tap to use this instead</p>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -632,10 +676,19 @@ export default function Step2Identify() {
               <textarea
                 value={diffNote}
                 onChange={(e) => setDiffNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && diffNote.trim()) {
+                    e.preventDefault();
+                    void handleSearchWithContext();
+                  }
+                }}
                 rows={4}
                 placeholder="e.g. The colorway is red/black. Tag says model XJ-400."
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {diffNote.trim() && (
+                <p className="text-xs text-gray-400 -mt-1">Press Enter to search</p>
+              )}
               <div className="space-y-2">
                 <button
                   onClick={handleSearchWithContext}
