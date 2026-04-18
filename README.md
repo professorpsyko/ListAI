@@ -1,4 +1,4 @@
-# ListAI — eBay AI Listing Assistant
+# ListSamurai — eBay AI Listing Assistant
 
 Upload photos → AI identifies the item → researches pricing → writes title & description → publishes to eBay.
 
