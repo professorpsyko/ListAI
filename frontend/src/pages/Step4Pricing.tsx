@@ -5,7 +5,6 @@ import { useListingStore } from '../store/listingStore';
 import { getSettings, triggerPriceResearch, updateListing } from '../lib/api';
 import { getDevPin, clearDevPin } from '../lib/devPins';
 import { useStepAction } from '../hooks/useStepAction';
-import clsx from 'clsx';
 
 export default function Step4Pricing() {
   const { id } = useParams<{ id: string }>();

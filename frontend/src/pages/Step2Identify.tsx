@@ -383,8 +383,6 @@ export default function Step2Identify() {
     }
 
     const claudeSerial = identification.serialNumber;
-    /** True once a serial is resolved AND we're not mid-edit of a first-entry (unresolved) */
-    const serialResolved = (claudeSerial !== null || userSerial !== undefined) && !(claudeSerial === null && userSerial === undefined && !editingSerial);
     /** Right column locked only while serial has never been committed at all */
     const lookOffLocked = claudeSerial === null && userSerial === undefined && !editingSerial;
 
