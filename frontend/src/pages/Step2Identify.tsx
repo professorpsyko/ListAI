@@ -23,9 +23,14 @@ export default function Step2Identify() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSerialSearch, setIsSerialSearch] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const [labelZoomed, setLabelZoomed] = useState(false);
-  const [labelRect, setLabelRect] = useState<DOMRect | null>(null);
-  const labelCardRef = useRef<HTMLDivElement>(null);
+  // Magnifier lens state — tracks cursor position within the rendered image area
+  const [lens, setLens] = useState<{
+    vpX: number; vpY: number;   // viewport cursor position (for fixed positioning the lens)
+    imgX: number; imgY: number; // cursor position inside the rendered image pixels
+    imgW: number; imgH: number; // actual rendered image dimensions (respects object-contain)
+  } | null>(null);
+  const LENS_SIZE = 130; // px — square lens width/height
+  const LENS_ZOOM = 4;   // how many times to magnify
   const [usingPin, setUsingPin] = useState(false);
 
   /**
@@ -485,21 +490,14 @@ export default function Step2Identify() {
           {/* RIGHT: label photo + Something look off? */}
           <div className="col-span-2 space-y-3 sticky top-4">
 
-            {/* Label photo
-                - hover triggers a zoom that appears immediately to the LEFT of this card
-                - pointer-events-none so the serial input never loses focus
-                - getBoundingClientRect pins the zoom right against the thumbnail edge */}
+            {/* Label photo with magnifier loupe
+                - Moving the mouse over the image shows a small square lens
+                  that displays a 4x zoomed slice of exactly what's under the cursor
+                - Uses CSS background-image trick — no click, input stays focused
+                - Accounts for object-contain offsets so zoom aligns with actual pixels */}
             {store.labelPhotoUrl && (
               <>
-                <div
-                  ref={labelCardRef}
-                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden cursor-zoom-in"
-                  onMouseEnter={() => {
-                    if (labelCardRef.current) setLabelRect(labelCardRef.current.getBoundingClientRect());
-                    setLabelZoomed(true);
-                  }}
-                  onMouseLeave={() => setLabelZoomed(false)}
-                >
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-3 pt-3 pb-1.5 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -507,44 +505,56 @@ export default function Step2Identify() {
                       </svg>
                       <p className="text-xs font-semibold text-gray-500">Label photo</p>
                     </div>
-                    <p className="text-xs text-gray-400 italic">hover to zoom</p>
+                    <p className="text-xs text-gray-400 italic">hover to magnify</p>
                   </div>
                   <img
                     src={store.labelPhotoUrl}
                     alt="Label"
-                    className="w-full object-contain max-h-52 bg-gray-50"
+                    className="w-full object-contain max-h-52 bg-gray-50 cursor-crosshair"
+                    onMouseMove={(e) => {
+                      const img = e.currentTarget;
+                      if (!img.naturalWidth || !img.naturalHeight) return;
+                      const rect = img.getBoundingClientRect();
+                      // Compute actual rendered image bounds inside the element (object-contain)
+                      const naturalAspect = img.naturalWidth / img.naturalHeight;
+                      const elementAspect = rect.width / rect.height;
+                      let renderedW: number, renderedH: number, offX: number, offY: number;
+                      if (naturalAspect > elementAspect) {
+                        renderedW = rect.width; renderedH = rect.width / naturalAspect;
+                        offX = 0; offY = (rect.height - renderedH) / 2;
+                      } else {
+                        renderedH = rect.height; renderedW = rect.height * naturalAspect;
+                        offX = (rect.width - renderedW) / 2; offY = 0;
+                      }
+                      const imgX = e.clientX - rect.left - offX;
+                      const imgY = e.clientY - rect.top - offY;
+                      if (imgX < 0 || imgY < 0 || imgX > renderedW || imgY > renderedH) {
+                        setLens(null); return;
+                      }
+                      setLens({ vpX: e.clientX, vpY: e.clientY, imgX, imgY, imgW: renderedW, imgH: renderedH });
+                    }}
+                    onMouseLeave={() => setLens(null)}
                   />
-                  <p className="px-3 py-2 text-xs text-gray-400">Hover to zoom — compare serial with what AI detected</p>
+                  <p className="px-3 py-2 text-xs text-gray-400">Move mouse over label to magnify any section</p>
                 </div>
 
-                {/* Zoomed overlay — anchored BELOW the label card so it never covers
-                    the serial number input (which lives in the left col at the same height).
-                    pointer-events-none: mouse stays over thumbnail, input keeps focus. */}
-                {labelZoomed && labelRect && (
+                {/* Magnifier lens — fixed to viewport, pointer-events-none so input focus is never lost */}
+                {lens && (
                   <div
-                    className="fixed z-50 pointer-events-none"
+                    className="fixed z-[9999] pointer-events-none rounded-lg"
                     style={{
-                      // Top of zoom = bottom of label card + small gap
-                      top: labelRect.bottom + 8,
-                      // Right-align with the label card, let it expand leftward
-                      right: window.innerWidth - labelRect.right,
-                      // Expand left but don't reach the screen edge
-                      maxWidth: labelRect.right - 16,
-                      // Don't run off the bottom of the screen
-                      maxHeight: window.innerHeight - labelRect.bottom - 24,
+                      left: lens.vpX - LENS_SIZE / 2,
+                      top: lens.vpY - LENS_SIZE / 2,
+                      width: LENS_SIZE,
+                      height: LENS_SIZE,
+                      backgroundImage: `url(${store.labelPhotoUrl})`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundSize: `${lens.imgW * LENS_ZOOM}px ${lens.imgH * LENS_ZOOM}px`,
+                      backgroundPosition: `-${lens.imgX * LENS_ZOOM - LENS_SIZE / 2}px -${lens.imgY * LENS_ZOOM - LENS_SIZE / 2}px`,
+                      border: '2.5px solid white',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.15)',
                     }}
-                  >
-                    <img
-                      src={store.labelPhotoUrl}
-                      alt="Label zoomed"
-                      className="rounded-2xl object-contain"
-                      style={{
-                        width: '100%',
-                        maxHeight: window.innerHeight - labelRect.bottom - 24,
-                        boxShadow: '0 25px 60px rgba(0,0,0,0.45), 0 0 0 4px white, 0 0 0 5px rgba(0,0,0,0.1)',
-                      }}
-                    />
-                  </div>
+                  />
                 )}
               </>
             )}
