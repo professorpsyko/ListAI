@@ -40,18 +40,26 @@ export default function Step2Identify() {
   const [selectedAltIndex, setSelectedAltIndex] = useState<number | null>(null);
 
   /**
-   * Serial number state when Claude returns null:
+   * Serial number state:
    *   undefined = user has not yet interacted (blocks confirm + "look off")
    *   null      = user confirmed "no serial on this item"
-   *   string    = user typed a serial and it was used for a re-search
+   *   string    = user entered / confirmed a serial number
    */
   const [userSerial, setUserSerial] = useState<string | null | undefined>(undefined);
   const [serialDraft, setSerialDraft] = useState('');
+  /** When true the edit input is shown even if a serial is already resolved */
+  const [editingSerial, setEditingSerial] = useState(false);
+
+  /**
+   * Persists the user's explicit serial commitment across re-searches so a
+   * new identification result never silently resets what the user typed.
+   * undefined = nothing committed yet.
+   */
+  const committedSerialRef = useRef<string | null | undefined>(undefined);
 
   /**
    * When a serial-triggered re-search completes, if Claude still returns
-   * serialNumber: null, we restore the user-entered value from this ref
-   * (rather than resetting userSerial to undefined).
+   * serialNumber: null, we restore the user-entered value from this ref.
    */
   const pendingSerialRef = useRef<string | null>(null);
 
@@ -64,19 +72,22 @@ export default function Step2Identify() {
 
   const { identification, identificationStatus } = store;
 
-  // Reset serial + card selection whenever a new identification arrives.
-  // If a serial search just completed and Claude still doesn't have a serial,
-  // restore the user-entered value so the user doesn't have to re-type.
+  // When a new identification arrives, restore any serial the user explicitly committed
+  // so a re-search never silently wipes what they typed.
   useEffect(() => {
     setSelectedAltIndex(null);
+    setEditingSerial(false);
     if (pendingSerialRef.current !== null) {
+      // Serial-triggered re-search just finished
       const pending = pendingSerialRef.current;
       pendingSerialRef.current = null;
       if (!identification?.serialNumber) {
-        // Claude still didn't find a serial — keep what the user typed
         setUserSerial(pending);
       }
-      // If Claude found it now, claudeSerial is non-null so we don't need userSerial
+      setSerialDraft('');
+    } else if (committedSerialRef.current !== undefined) {
+      // User had already committed a value — keep it regardless of new result
+      setUserSerial(committedSerialRef.current);
       setSerialDraft('');
     } else {
       setUserSerial(undefined);
@@ -111,6 +122,19 @@ export default function Step2Identify() {
     }
   }
 
+  /** Commit a serial value so it survives any subsequent re-searches */
+  function commitSerial(value: string | null) {
+    committedSerialRef.current = value;
+    setUserSerial(value);
+    setEditingSerial(false);
+  }
+
+  /** Open the edit input, optionally pre-filling with a current value */
+  function openSerialEdit(prefill = '') {
+    setSerialDraft(prefill);
+    setEditingSerial(true);
+  }
+
   /**
    * Called when user confirms a serial number they typed.
    * Automatically re-runs identification with the serial as context —
@@ -120,6 +144,7 @@ export default function Step2Identify() {
   async function handleSerialConfirm(serial: string) {
     if (!id || !serial.trim()) return;
     const trimmed = serial.trim();
+    committedSerialRef.current = trimmed; // persist immediately
     pendingSerialRef.current = trimmed;
     setIsRetrying(true);
     setIsSerialSearch(true);
@@ -340,10 +365,10 @@ export default function Step2Identify() {
     }
 
     const claudeSerial = identification.serialNumber;
-    /** True once the user has dealt with the serial prompt (or Claude found one) */
-    const serialResolved = claudeSerial !== null || userSerial !== undefined;
-    /** Right column is locked until serial is confirmed */
-    const lookOffLocked = claudeSerial === null && userSerial === undefined;
+    /** True once a serial is resolved AND we're not mid-edit of a first-entry (unresolved) */
+    const serialResolved = (claudeSerial !== null || userSerial !== undefined) && !(claudeSerial === null && userSerial === undefined && !editingSerial);
+    /** Right column locked only while serial has never been committed at all */
+    const lookOffLocked = claudeSerial === null && userSerial === undefined && !editingSerial;
 
     return (
       <div className="space-y-5 max-w-4xl">
@@ -389,35 +414,34 @@ export default function Step2Identify() {
                 {identification.ebayCategory && <div className="col-span-2"><span className="font-medium text-gray-800">Category:</span> {identification.ebayCategory}</div>}
               </div>
 
-              {/* Serial number section */}
-              {claudeSerial !== null ? (
-                <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg text-sm bg-blue-50 border border-blue-100">
-                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium text-blue-700">Serial:</span>{' '}
-                    <code className="font-mono text-blue-800">{claudeSerial}</code>
-                    {identification.serialDecoding && (
-                      <p className="text-xs text-blue-600 mt-0.5">{identification.serialDecoding}</p>
-                    )}
-                  </div>
-                </div>
-              ) : userSerial === undefined ? (
-                /* Claude found no serial — user must resolve before proceeding */
-                <div className="mt-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                    </svg>
-                    <p className="text-xs font-semibold text-amber-700">Serial number not detected — check label photo &rarr;</p>
-                  </div>
+              {/* Serial number section
+                  Three display states:
+                  1. Edit input — shown when serial is unresolved OR user clicked "change"
+                  2. Resolved chip — serial confirmed (Claude's or user's), always has "change"
+                  The edit input is the same UI regardless of how we got here. */}
+              {editingSerial || (claudeSerial === null && userSerial === undefined) ? (
+                /* ── Edit / entry input ── */
+                <div className={clsx(
+                  'mt-3 rounded-lg border-2 p-3 space-y-2',
+                  claudeSerial === null && userSerial === undefined && !editingSerial
+                    ? 'border-amber-300 bg-amber-50'   // required first-time entry
+                    : 'border-gray-300 bg-gray-50',    // voluntary change
+                )}>
+                  {claudeSerial === null && userSerial === undefined && !editingSerial && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <p className="text-xs font-semibold text-amber-700">Serial not detected — check label photo &rarr;</p>
+                    </div>
+                  )}
                   <input
+                    autoFocus={editingSerial}
                     value={serialDraft}
                     onChange={(e) => setSerialDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && serialDraft.trim()) void handleSerialConfirm(serialDraft); }}
                     placeholder="Enter serial number from label..."
-                    className="w-full border border-amber-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                    className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   />
                   <div className="flex gap-2">
                     <button
@@ -425,38 +449,55 @@ export default function Step2Identify() {
                       disabled={!serialDraft.trim()}
                       className={clsx(
                         'flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors',
-                        serialDraft.trim() ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-amber-200 text-amber-400 cursor-not-allowed',
+                        serialDraft.trim() ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed',
                       )}
                     >
                       Confirm &amp; re-search
                     </button>
                     <button
-                      onClick={() => setUserSerial(null)}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors"
+                      onClick={() => commitSerial(null)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
                     >
                       No serial on this item
                     </button>
+                    {/* Cancel back to previous resolved state if one exists */}
+                    {(claudeSerial !== null || userSerial !== undefined) && (
+                      <button
+                        onClick={() => { setEditingSerial(false); setSerialDraft(''); }}
+                        className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
-                /* User has resolved the serial */
-                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-50 border border-gray-200">
-                  <svg className="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                /* ── Resolved chip — Claude's serial or user-committed value ── */
+                <div className={clsx(
+                  'mt-3 flex items-start gap-2 px-3 py-2 rounded-lg text-sm',
+                  claudeSerial !== null && !userSerial
+                    ? 'bg-blue-50 border border-blue-100'
+                    : 'bg-gray-50 border border-gray-200',
+                )}>
+                  <svg className={clsx('w-4 h-4 flex-shrink-0 mt-0.5', claudeSerial !== null && !userSerial ? 'text-blue-500' : 'text-gray-400')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    {userSerial ? (
+                    {(userSerial || claudeSerial) ? (
                       <>
-                        <span className="font-medium text-gray-700">Serial:</span>{' '}
-                        <code className="font-mono text-gray-800">{userSerial}</code>
+                        <span className={clsx('font-medium', claudeSerial !== null && !userSerial ? 'text-blue-700' : 'text-gray-700')}>Serial:</span>{' '}
+                        <code className={clsx('font-mono', claudeSerial !== null && !userSerial ? 'text-blue-800' : 'text-gray-800')}>{userSerial || claudeSerial}</code>
+                        {!userSerial && identification.serialDecoding && (
+                          <p className="text-xs text-blue-600 mt-0.5">{identification.serialDecoding}</p>
+                        )}
                       </>
                     ) : (
                       <span className="text-gray-500">No serial on this item</span>
                     )}
                   </div>
                   <button
-                    onClick={() => { setUserSerial(undefined); setSerialDraft(''); }}
-                    className="text-xs text-blue-500 hover:text-blue-700 underline flex-shrink-0"
+                    onClick={() => openSerialEdit(userSerial || claudeSerial || '')}
+                    className="text-xs text-blue-500 hover:text-blue-700 underline flex-shrink-0 mt-0.5"
                   >
                     change
                   </button>
