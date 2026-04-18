@@ -24,6 +24,8 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916145: 'Description is required. Please add a description to your listing.',
   21916076: 'Invalid condition for this category.',
   21916110: 'Quantity must be at least 1.',
+  931: 'Your eBay auth token has expired or is invalid. Generate a new User Token at developer.ebay.com → My Account → User Tokens, then update EBAY_AUTH_TOKEN in your Railway environment variables.',
+  932: 'Your eBay auth token has expired. Please generate a new one at developer.ebay.com and update EBAY_AUTH_TOKEN in Railway.',
   10007: 'Authentication failed. Please reconnect your eBay account.',
   291: 'Invalid user token. Please reconnect your eBay account in Settings.',
   21917053: 'Start price must be greater than zero for auction listings.',
