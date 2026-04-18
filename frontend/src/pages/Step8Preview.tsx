@@ -55,23 +55,23 @@ function calcScore(
     score += 20;
     all.push({
       id: 'more-photos',
-      text: 'Add more photos (aim for 10)',
-      why: 'eBay listings with 10 photos see up to 40% higher conversion. Buyers want to inspect every angle before buying.',
+      text: 'Add a few more photos to hit 10',
+      why: 'eBay listings with 10 photos see up to 40% higher conversion. Buyers love being able to inspect every angle before buying.',
       points: 5,
     });
   } else if (photoCount >= 2) {
     score += 10;
     all.push({
       id: 'more-photos',
-      text: 'Add at least 5 photos',
-      why: 'Multiple photos dramatically increase buyer confidence. Show all sides, any wear, and included accessories.',
+      text: 'Adding 5+ photos would really help',
+      why: 'More photos build buyer confidence fast. Show all sides, any wear marks, and included accessories.',
       points: 15,
     });
   } else {
     all.push({
       id: 'more-photos',
-      text: 'Add more photos',
-      why: 'Listings without photos rarely sell. Add several clear images from different angles.',
+      text: 'Adding photos will make a big difference',
+      why: 'Listings with photos sell dramatically faster. A few clear shots from different angles is all it takes.',
       points: 25,
     });
   }
@@ -84,23 +84,23 @@ function calcScore(
     score += 15;
     all.push({
       id: 'longer-title',
-      text: 'Lengthen title to 75+ characters',
-      why: 'eBay allows 80 characters. Longer titles include more keywords buyers search for, directly boosting search rank.',
+      text: 'A little more in the title could boost search rank',
+      why: 'eBay allows 80 characters — filling it with keywords buyers actually search for (model number, color, condition) gets you seen more.',
       points: 5,
     });
   } else if (titleLen >= 50) {
     score += 10;
     all.push({
       id: 'longer-title',
-      text: 'Lengthen title to 65+ characters',
+      text: 'Expanding your title to 65+ characters helps',
       why: "Include brand, model, condition, and key features. Titles with 65–80 chars get significantly better search placement.",
       points: 10,
     });
   } else {
     all.push({
       id: 'longer-title',
-      text: 'Write a detailed title (65+ characters)',
-      why: 'Short titles miss key search terms. Buyers search by model number, brand, and specific features — capture them all.',
+      text: 'A more detailed title would improve visibility',
+      why: 'Buyers search by model number, brand, and specific features. A richer title captures more of those searches.',
       points: 20,
     });
   }
@@ -113,23 +113,23 @@ function calcScore(
     score += 15;
     all.push({
       id: 'longer-desc',
-      text: 'Expand description to 300+ words',
-      why: "Longer descriptions reduce buyer questions and returns. Include exact specs, history, what's included, and any known flaws.",
+      text: 'A bit more detail in the description would shine',
+      why: "Richer descriptions reduce buyer questions and returns. Exact specs, what's included, and any known flaws build trust.",
       points: 5,
     });
   } else if (wordCount >= 100) {
     score += 10;
     all.push({
       id: 'longer-desc',
-      text: 'Expand description to 200+ words',
-      why: 'Buyers read descriptions to decide. Cover condition detail, included accessories, dimensions, and any imperfections.',
+      text: 'Fleshing out the description to 200+ words helps',
+      why: 'Buyers read descriptions closely before buying. Cover condition, accessories, dimensions, and any imperfections upfront.',
       points: 10,
     });
   } else {
     all.push({
       id: 'longer-desc',
-      text: 'Write a detailed description',
-      why: 'A thorough description answers buyer questions before they ask, reducing back-and-forth and increasing sale confidence.',
+      text: 'Adding more description can really lift your listing',
+      why: 'A thorough description answers buyer questions before they ask, reducing back-and-forth and building confidence to buy.',
       points: 20,
     });
   }
@@ -145,15 +145,15 @@ function calcScore(
       score += 10;
       all.push({
         id: 'price',
-        text: 'Adjust price closer to market value',
+        text: 'Nudging the price closer to market could speed up the sale',
         why: `AI research suggests $${suggested.toFixed(2)}. Listings priced within 10% of market value sell 3× faster on average.`,
         points: 10,
       });
     } else {
       all.push({
         id: 'price',
-        text: 'Price is far from market value',
-        why: `AI research suggests $${suggested.toFixed(2)}. You're more than 25% away — this may cause the listing to sit unsold.`,
+        text: 'Revisiting the price could make a big difference',
+        why: `AI research suggests $${suggested.toFixed(2)}. A price closer to market value tends to attract buyers much faster.`,
         points: 20,
       });
     }
@@ -169,15 +169,15 @@ function calcScore(
     score += 10;
     all.push({
       id: 'free-shipping',
-      text: 'Offer free shipping',
-      why: 'Free shipping listings rank higher in eBay Best Match and convert 30%+ better. Consider folding the cost into your price.',
+      text: 'Free shipping tends to convert better',
+      why: 'Listings with free shipping rank higher in eBay Best Match and convert 30%+ better. Try folding the cost into your price.',
       points: 5,
     });
   } else {
     all.push({
       id: 'shipping',
-      text: 'Add shipping details',
-      why: "Buyers abandon listings that don't show shipping info. Add a service and cost to complete your listing.",
+      text: 'Adding shipping details will complete your listing',
+      why: "Buyers expect to know shipping costs upfront. Adding a service and price removes a common reason people don't buy.",
       points: 15,
     });
   }
@@ -214,16 +214,16 @@ function ScoreGauge({ score }: { score: number }) {
 function SuggestionCard({ s, onIgnore }: { s: Suggestion; onIgnore: () => void }) {
   const [showWhy, setShowWhy] = useState(false);
   return (
-    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-      {/* Warning icon */}
-      <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+    <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+      {/* Lightbulb icon */}
+      <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM6.293 5.293a1 1 0 011.414 0l.7.7a1 1 0 01-1.414 1.414l-.7-.7a1 1 0 010-1.414zM14 10a4 4 0 11-8 0 4 4 0 018 0zM7 15a1 1 0 000 2h6a1 1 0 000-2H7z" />
       </svg>
 
       {/* Text + badges */}
       <div className="flex-1 flex items-center gap-2 flex-wrap min-w-0">
-        <span className="text-sm text-gray-800">{s.text}</span>
-        <span className="text-xs font-semibold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+        <span className="text-sm text-gray-700">{s.text}</span>
+        <span className="text-xs font-semibold text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5 whitespace-nowrap">
           +{s.points} pts
         </span>
         {/* Why tooltip */}
@@ -231,7 +231,7 @@ function SuggestionCard({ s, onIgnore }: { s: Suggestion; onIgnore: () => void }
           <button
             onMouseEnter={() => setShowWhy(true)}
             onMouseLeave={() => setShowWhy(false)}
-            className="w-4 h-4 rounded-full border border-gray-400 text-gray-400 text-[10px] flex items-center justify-center hover:border-blue-400 hover:text-blue-500 transition-colors flex-shrink-0"
+            className="w-4 h-4 rounded-full border border-gray-300 text-gray-400 text-[10px] flex items-center justify-center hover:border-blue-400 hover:text-blue-500 transition-colors flex-shrink-0"
           >
             ?
           </button>
@@ -244,12 +244,12 @@ function SuggestionCard({ s, onIgnore }: { s: Suggestion; onIgnore: () => void }
         </div>
       </div>
 
-      {/* Ignore */}
+      {/* Dismiss */}
       <button
         onClick={onIgnore}
-        className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0 ml-1 transition-colors"
+        className="text-xs text-gray-400 hover:text-gray-500 flex-shrink-0 ml-1 transition-colors"
       >
-        Ignore
+        Dismiss
       </button>
     </div>
   );
@@ -422,12 +422,16 @@ export default function Step8Preview() {
     labelUrl ? [...basePhotos, labelUrl] : basePhotos,
   );
 
-  // Re-sync if processed photos arrive after mount
+  // Re-sync if processed photos arrive after mount.
+  // Always deduplicate label URL before appending — it may have been saved into
+  // processedImageUrls by a previous publish attempt, which would cause it to
+  // appear twice if we blindly append it again.
   useEffect(() => {
     const fresh = showOriginal
       ? store.itemPhotoUrls
       : (store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls);
-    const withLabel = labelUrl ? [...fresh, labelUrl] : fresh;
+    const withoutLabel = labelUrl ? fresh.filter((u) => u !== labelUrl) : fresh;
+    const withLabel = labelUrl ? [...withoutLabel, labelUrl] : withoutLabel;
     setOrderedPhotos(withLabel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.processedPhotoUrls.length, showOriginal]);
@@ -520,7 +524,10 @@ export default function Step8Preview() {
       setPublishResult(result);
       setPublishStage('success');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred';
+      // Axios wraps the HTTP response — extract the real error from the body if present
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      const msg = axiosErr.response?.data?.error
+        ?? (err instanceof Error ? err.message : 'An unexpected error occurred');
       setPublishError(msg);
       setPublishStage('error');
     }
