@@ -18,7 +18,7 @@ export interface IdentificationResult {
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
   researchDescription: string;
-  researchLinks: Array<{ title: string; url: string; snippet: string }>;
+  researchLinks: Array<{ title: string; url: string; snippet: string; imageUrl: string | null }>;
 }
 
 interface VisionOptions {
@@ -52,8 +52,22 @@ async function urlToBase64(url: string): Promise<{ data: string; mediaType: 'ima
   return { data, mediaType };
 }
 
-/** Search the web for product information and return top results */
-async function searchForItem(query: string): Promise<Array<{ title: string; url: string; snippet: string }>> {
+/** Fetch the primary OG/meta image for a URL via microlink.io (free, no key needed) */
+async function fetchMetaImage(url: string): Promise<string | null> {
+  try {
+    const resp = await axios.get('https://api.microlink.io', {
+      params: { url },
+      timeout: 4000,
+    });
+    const image = resp.data?.data?.image?.url as string | undefined;
+    return image ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Search the web for product information and return top results with OG images */
+async function searchForItem(query: string): Promise<Array<{ title: string; url: string; snippet: string; imageUrl: string | null }>> {
   if (!config.SERPER_API_KEY) return [];
   try {
     const response = await axios.post(
@@ -64,9 +78,18 @@ async function searchForItem(query: string): Promise<Array<{ title: string; url:
         timeout: 10000,
       },
     );
-    return ((response.data.organic as Array<{ title: string; link: string; snippet: string }>) || [])
-      .slice(0, 4)
-      .map((r) => ({ title: r.title, url: r.link, snippet: r.snippet }));
+    const hits = ((response.data.organic as Array<{ title: string; link: string; snippet: string; imageUrl?: string; thumbnail?: string }>) || [])
+      .slice(0, 4);
+
+    // Fetch OG images in parallel — 4s timeout each, failures return null
+    const withImages = await Promise.all(
+      hits.map(async (r) => {
+        const imageUrl = r.imageUrl || r.thumbnail || await fetchMetaImage(r.link);
+        return { title: r.title, url: r.link, snippet: r.snippet, imageUrl: imageUrl ?? null };
+      }),
+    );
+
+    return withImages;
   } catch (err) {
     console.warn('[vision] Serper search failed:', (err as Error).message);
     return [];

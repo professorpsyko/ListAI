@@ -611,21 +611,37 @@ export default function Step2Identify() {
             {researchLinks.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sources — click to verify</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {researchLinks.map((link, i) => (
-                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
-                    >
-                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 truncate">{link.title}</p>
-                        <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
-                        <p className="text-xs text-blue-500 truncate mt-0.5">{link.url}</p>
-                      </div>
-                    </a>
-                  ))}
+                <div className="space-y-2">
+                  {researchLinks.map((link, i) => {
+                    let domain = link.url;
+                    try { domain = new URL(link.url).hostname.replace('www.', ''); } catch { /* keep raw url */ }
+                    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                    return (
+                      <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
+                      >
+                        {/* Image: OG image if available, else large favicon */}
+                        <div className="flex-shrink-0 w-20 h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
+                          <img
+                            src={link.imageUrl || faviconUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = faviconUrl; }}
+                          />
+                        </div>
+                        {/* Text */}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 line-clamp-1">{link.title}</p>
+                          <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
+                          <p className="text-xs text-blue-400 mt-1">{domain}</p>
+                        </div>
+                        {/* Arrow */}
+                        <svg className="w-4 h-4 text-gray-300 flex-shrink-0 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             )}
