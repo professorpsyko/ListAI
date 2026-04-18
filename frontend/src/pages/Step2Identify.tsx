@@ -597,54 +597,78 @@ export default function Step2Identify() {
         </div>
 
         {/* Research section — full width below both columns */}
-        {(identification.researchDescription || researchLinks.length > 0) && (
-          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-4">
-            <div className="flex items-center gap-2">
+        {(identification.researchDescription || researchLinks.length > 0 || (identification.researchImages ?? []).length > 0) && (
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-4">
               <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <h4 className="text-sm font-semibold text-gray-700">Research</h4>
             </div>
+
+            {/* Description — full width */}
             {identification.researchDescription && (
-              <p className="text-sm text-gray-600 leading-relaxed">{identification.researchDescription}</p>
+              <p className="text-sm text-gray-600 leading-relaxed mb-4">{identification.researchDescription}</p>
             )}
-            {researchLinks.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sources — click to verify</p>
-                <div className="space-y-2">
+
+            {/* Two columns: source links left, image grid right */}
+            <div className="grid grid-cols-5 gap-5">
+
+              {/* Left: source links */}
+              {researchLinks.length > 0 && (
+                <div className={clsx('space-y-2', (identification.researchImages ?? []).length > 0 ? 'col-span-3' : 'col-span-5')}>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Sources — click to verify</p>
                   {researchLinks.map((link, i) => {
                     let domain = link.url;
-                    try { domain = new URL(link.url).hostname.replace('www.', ''); } catch { /* keep raw url */ }
-                    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                    try { domain = new URL(link.url).hostname.replace('www.', ''); } catch { /* keep raw */ }
+                    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
                     return (
                       <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
+                        className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all group"
                       >
-                        {/* Image: OG image if available, else large favicon */}
-                        <div className="flex-shrink-0 w-20 h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
-                          <img
-                            src={link.imageUrl || faviconUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = faviconUrl; }}
-                          />
-                        </div>
-                        {/* Text */}
+                        <img src={faviconUrl} alt="" className="w-6 h-6 rounded flex-shrink-0 object-contain" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 line-clamp-1">{link.title}</p>
-                          <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{link.snippet}</p>
-                          <p className="text-xs text-blue-400 mt-1">{domain}</p>
+                          <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{link.snippet}</p>
+                          <p className="text-xs text-blue-400 mt-0.5">{domain}</p>
                         </div>
-                        {/* Arrow */}
-                        <svg className="w-4 h-4 text-gray-300 flex-shrink-0 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                       </a>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Right: Google Images grid — visual confirmation */}
+              {(identification.researchImages ?? []).length > 0 && (
+                <div className={clsx(researchLinks.length > 0 ? 'col-span-2' : 'col-span-5')}>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Image results — visual check</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(identification.researchImages ?? []).map((img, i) => (
+                      <a
+                        key={i}
+                        href={img.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={img.title}
+                        className="block aspect-square rounded-lg overflow-hidden bg-gray-100 hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-all"
+                      >
+                        <img
+                          src={img.imageUrl}
+                          alt={img.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                        />
+                      </a>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">Tap any image to open source</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

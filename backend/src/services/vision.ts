@@ -18,7 +18,8 @@ export interface IdentificationResult {
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
   researchDescription: string;
-  researchLinks: Array<{ title: string; url: string; snippet: string; imageUrl: string | null }>;
+  researchLinks: Array<{ title: string; url: string; snippet: string }>;
+  researchImages: Array<{ imageUrl: string; title: string; sourceUrl: string }>;
 }
 
 interface VisionOptions {
@@ -52,22 +53,8 @@ async function urlToBase64(url: string): Promise<{ data: string; mediaType: 'ima
   return { data, mediaType };
 }
 
-/** Fetch the primary OG/meta image for a URL via microlink.io (free, no key needed) */
-async function fetchMetaImage(url: string): Promise<string | null> {
-  try {
-    const resp = await axios.get('https://api.microlink.io', {
-      params: { url },
-      timeout: 4000,
-    });
-    const image = resp.data?.data?.image?.url as string | undefined;
-    return image ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Search the web for product information and return top results with OG images */
-async function searchForItem(query: string): Promise<Array<{ title: string; url: string; snippet: string; imageUrl: string | null }>> {
+/** Web search — returns top text results for research links */
+async function searchForItem(query: string): Promise<Array<{ title: string; url: string; snippet: string }>> {
   if (!config.SERPER_API_KEY) return [];
   try {
     const response = await axios.post(
@@ -78,20 +65,37 @@ async function searchForItem(query: string): Promise<Array<{ title: string; url:
         timeout: 10000,
       },
     );
-    const hits = ((response.data.organic as Array<{ title: string; link: string; snippet: string; imageUrl?: string; thumbnail?: string }>) || [])
-      .slice(0, 4);
-
-    // Fetch OG images in parallel — 4s timeout each, failures return null
-    const withImages = await Promise.all(
-      hits.map(async (r) => {
-        const imageUrl = r.imageUrl || r.thumbnail || await fetchMetaImage(r.link);
-        return { title: r.title, url: r.link, snippet: r.snippet, imageUrl: imageUrl ?? null };
-      }),
-    );
-
-    return withImages;
+    return ((response.data.organic as Array<{ title: string; link: string; snippet: string }>) || [])
+      .slice(0, 4)
+      .map((r) => ({ title: r.title, url: r.link, snippet: r.snippet }));
   } catch (err) {
     console.warn('[vision] Serper search failed:', (err as Error).message);
+    return [];
+  }
+}
+
+/** Image search — returns Google Images results so the user can visually confirm the item */
+async function searchForImages(query: string): Promise<Array<{ imageUrl: string; title: string; sourceUrl: string }>> {
+  if (!config.SERPER_API_KEY) return [];
+  try {
+    const response = await axios.post(
+      'https://google.serper.dev/images',
+      { q: query, num: 8 },
+      {
+        headers: { 'X-API-KEY': config.SERPER_API_KEY, 'Content-Type': 'application/json' },
+        timeout: 10000,
+      },
+    );
+    return ((response.data.images as Array<{ imageUrl: string; thumbnailUrl?: string; title: string; link: string }>) || [])
+      .slice(0, 6)
+      .map((r) => ({
+        // thumbnailUrl is Google's cached copy — more reliable than hotlinked imageUrl
+        imageUrl: r.thumbnailUrl || r.imageUrl,
+        title: r.title,
+        sourceUrl: r.link,
+      }));
+  } catch (err) {
+    console.warn('[vision] Serper image search failed:', (err as Error).message);
     return [];
   }
 }
@@ -202,15 +206,21 @@ Respond ONLY in this exact JSON format:
     throw new Error(`Claude did not return valid JSON. Response: ${text.slice(0, 300)}`);
   }
 
-  const result = JSON.parse(jsonMatch[0]) as Omit<IdentificationResult, 'researchLinks'>;
+  const result = JSON.parse(jsonMatch[0]) as Omit<IdentificationResult, 'researchLinks' | 'researchImages'>;
 
   // Build a targeted search query — serial number first if available, otherwise item name
   const searchQuery = result.serialNumber
     ? `"${result.serialNumber}" ${result.brand} ${result.model}`.trim()
     : `${result.identification} ${result.brand} specifications`.trim();
 
-  console.log(`[vision] Searching for research links: "${searchQuery}"`);
-  const researchLinks = await searchForItem(searchQuery);
+  // Image search uses a slightly different query focused on visual results
+  const imageQuery = `${result.identification} ${result.brand}`.trim();
 
-  return { ...result, researchLinks };
+  console.log(`[vision] Running web + image search in parallel: "${searchQuery}"`);
+  const [researchLinks, researchImages] = await Promise.all([
+    searchForItem(searchQuery),
+    searchForImages(imageQuery),
+  ]);
+
+  return { ...result, researchLinks, researchImages };
 }

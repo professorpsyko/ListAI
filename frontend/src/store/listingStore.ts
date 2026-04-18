@@ -12,7 +12,8 @@ export interface IdentificationResult {
   confidence: number;
   alternativeIdentifications: Array<{ identification: string; confidence: number }>;
   researchDescription?: string;
-  researchLinks?: Array<{ title: string; url: string; snippet: string; imageUrl?: string | null }>;
+  researchLinks?: Array<{ title: string; url: string; snippet: string }>;
+  researchImages?: Array<{ imageUrl: string; title: string; sourceUrl: string }>;
   error?: string;
 }
 
