@@ -26,6 +26,7 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916110: 'Quantity must be at least 1.',
   931: 'Your eBay auth token has expired or is invalid. Generate a new User Token at developer.ebay.com → My Account → User Tokens, then update EBAY_AUTH_TOKEN in your Railway environment variables.',
   932: 'Your eBay auth token has expired. Please generate a new one at developer.ebay.com and update EBAY_AUTH_TOKEN in Railway.',
+  21916984: 'IAF (OAuth) token is invalid or expired. Go to developer.ebay.com, generate a fresh User Access Token, and update EBAY_AUTH_TOKEN in Railway.',
   10007: 'Authentication failed. Please reconnect your eBay account.',
   291: 'Invalid user token. Please reconnect your eBay account in Settings.',
   21917053: 'Start price must be greater than zero for auction listings.',
@@ -92,6 +93,12 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
     console.warn('[eBay] ⚠️  SANDBOX mode is ON — listing will NOT appear on real eBay. Set EBAY_SANDBOX_MODE=false to publish live.');
   }
 
+  // Detect token type:
+  //  - Legacy Auth'n'Auth tokens start with "v^1.1#" and go inside <eBayAuthToken> in the XML
+  //  - Modern OAuth user access tokens go in the Authorization: Bearer header (NOT in XML)
+  const isLegacyToken = config.EBAY_AUTH_TOKEN.startsWith('v^1.1');
+  console.log(`[eBay] Token type: ${isLegacyToken ? 'legacy Auth\'n\'Auth (XML)' : 'OAuth Bearer (header)'}`);
+
   const conditionId = CONDITION_MAP[data.condition] ?? 4000;
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
@@ -121,7 +128,7 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
-    <eBayAuthToken>${config.EBAY_AUTH_TOKEN}</eBayAuthToken>
+    ${isLegacyToken ? `<eBayAuthToken>${config.EBAY_AUTH_TOKEN}</eBayAuthToken>` : ''}
   </RequesterCredentials>
   <Item>
     <Title>${escapeXml(data.title.slice(0, 80))}</Title>
@@ -159,6 +166,8 @@ export async function publishListing(data: ListingData): Promise<PublishResult> 
       'X-EBAY-API-DEV-NAME': config.EBAY_DEV_ID,
       'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
       'Content-Type': 'text/xml',
+      // OAuth tokens go in the Authorization header; legacy tokens are in the XML body
+      ...(!isLegacyToken && { 'Authorization': `Bearer ${config.EBAY_AUTH_TOKEN}` }),
     },
     timeout: 30000,
   });
