@@ -117,7 +117,7 @@ export default function Step5Title() {
         {showReasoning && (
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800">
             <p className="font-medium mb-1">How this title was generated</p>
-            <p className="text-blue-700">Claude used your item identification, condition, color, and special notes — combined with your past listing style — to write a keyword-rich title optimized for eBay search.</p>
+            <p className="text-blue-700">AI used your item identification, condition, color, and special notes — combined with your past listing style — to write a keyword-rich title optimized for eBay search.</p>
           </div>
         )}
       </div>

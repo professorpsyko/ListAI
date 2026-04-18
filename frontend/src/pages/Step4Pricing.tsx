@@ -1,10 +1,75 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useListingStore } from '../store/listingStore';
 import { getSettings, triggerPriceResearch, updateListing } from '../lib/api';
 import { getDevPin, clearDevPin } from '../lib/devPins';
 import { useStepAction } from '../hooks/useStepAction';
+import clsx from 'clsx';
+
+// ── Animated progress stages for pricing research ─────────────────────────────
+const PRICING_STAGES = [
+  { delay: 0,     pct: 8,  text: 'Scanning eBay sold listings…' },
+  { delay: 2500,  pct: 28, text: 'Gathering recent sale prices…' },
+  { delay: 6000,  pct: 48, text: 'Analysing condition & category…' },
+  { delay: 11000, pct: 66, text: 'Comparing market trends…' },
+  { delay: 17000, pct: 82, text: 'Calculating suggested price…' },
+  { delay: 24000, pct: 93, text: 'Finalising research…' },
+];
+
+function usePricingProgress(active: boolean) {
+  const [stageIdx, setStageIdx] = useState(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    if (!active) {
+      timersRef.current.forEach(clearTimeout);
+      setStageIdx(0);
+      return;
+    }
+    timersRef.current = PRICING_STAGES.map((s, i) =>
+      setTimeout(() => setStageIdx(i), s.delay),
+    );
+    return () => timersRef.current.forEach(clearTimeout);
+  }, [active]);
+
+  const stage = PRICING_STAGES[stageIdx] ?? PRICING_STAGES[PRICING_STAGES.length - 1];
+  return stage;
+}
+
+function PricingProgressCard({ pct, text }: { pct: number; text: string }) {
+  return (
+    <div className="flex flex-col gap-4 py-4">
+      {/* Spinner + icon */}
+      <div className="flex items-center gap-3">
+        <div className="relative w-10 h-10 flex-shrink-0">
+          <div className="absolute inset-0 rounded-full border-3 border-blue-100" />
+          <div className="absolute inset-0 rounded-full border-[3px] border-blue-500 border-t-transparent animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+        <p key={text} className="text-sm font-semibold text-blue-700 leading-snug animate-pulse">
+          {text}
+        </p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="space-y-1">
+        <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-xs text-blue-400 text-right">{pct}%</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Step4Pricing() {
   const { id } = useParams<{ id: string }>();
@@ -46,7 +111,10 @@ export default function Step4Pricing() {
   }, [settings, store.pricingResearch, store.finalPrice]);
 
   const isLoading = store.pricingJobStatus === 'QUEUED' || store.pricingJobStatus === 'PROCESSING';
+  const isQueuing = store.pricingJobStatus === 'PENDING';
   const pricing = store.pricingResearch;
+
+  const { pct, text } = usePricingProgress(isLoading);
 
   useStepAction('Next: Title \u2192', !store.finalPrice, handleNext);
 
@@ -91,14 +159,16 @@ export default function Step4Pricing() {
         <div className="space-y-5">
           <h3 className="font-semibold text-gray-700">Market research</h3>
 
-          {isLoading ? (
-            <div className="space-y-3 animate-pulse">
-              <div className="h-8 bg-gray-200 rounded w-32" />
-              <div className="h-4 bg-gray-200 rounded w-full" />
-              <div className="h-4 bg-gray-200 rounded w-4/5" />
-              <div className="h-4 bg-gray-200 rounded w-3/5" />
+          {isQueuing && (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-pulse" />
+              Queuing research job…
             </div>
-          ) : pricing ? (
+          )}
+
+          {isLoading && <PricingProgressCard pct={pct} text={text} />}
+
+          {!isLoading && !isQueuing && pricing && (
             <>
               <div>
                 <p className="text-sm text-gray-500 mb-1">Suggested price</p>
@@ -167,12 +237,12 @@ export default function Step4Pricing() {
                 </div>
               </div>
             </>
-          ) : store.pricingJobStatus === 'FAILED' ? (
+          )}
+
+          {!isLoading && !isQueuing && !pricing && store.pricingJobStatus === 'FAILED' && (
             <div className="text-sm text-red-600">
               Pricing research failed. You can still enter a price manually.
             </div>
-          ) : (
-            <div className="text-sm text-gray-500">Waiting for pricing research to start…</div>
           )}
         </div>
 
@@ -195,12 +265,15 @@ export default function Step4Pricing() {
             {pricing && !store.finalPrice && (
               <p className="text-sm text-gray-400 mt-1.5">Suggested: ${pricing.suggestedPrice.toFixed(2)}</p>
             )}
+            {(isLoading || isQueuing) && !store.finalPrice && (
+              <p className="text-sm text-gray-400 mt-1.5">Research in progress — or enter a price now</p>
+            )}
           </div>
 
           {pricing && (
             <button
               onClick={() => store.setFinalPrice(String(pricing.suggestedPrice))}
-              className="text-sm text-blue-600 hover:underline"
+              className={clsx('text-sm text-blue-600 hover:underline')}
             >
               Use suggested price (${pricing.suggestedPrice.toFixed(2)})
             </button>

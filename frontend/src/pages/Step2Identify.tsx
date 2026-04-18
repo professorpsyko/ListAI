@@ -307,8 +307,8 @@ export default function Step2Identify() {
         </p>
         <p className="text-sm text-gray-400">
           {isSerialSearch
-            ? 'Serial numbers help Claude pinpoint the exact variant'
-            : 'Claude is identifying your item'}
+            ? 'Serial numbers help AI pinpoint the exact variant'
+            : 'AI is identifying your item'}
         </p>
       </div>
     );

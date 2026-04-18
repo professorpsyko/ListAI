@@ -270,7 +270,7 @@ router.post('/:id/price-research', requireAuth, async (req: Request, res: Respon
     return;
   }
 
-  const job = await pricingQueue.add('research-price', {
+  const job = await pricingQueue.add('pricing-research', {
     listingId: req.params.id,
     itemName,
     condition: listing.itemCondition || 'Used — good',
