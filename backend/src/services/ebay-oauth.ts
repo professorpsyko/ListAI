@@ -70,12 +70,13 @@ export async function exchangeCodeForTokens(code: string): Promise<EbayTokenSet>
 export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<{ accessToken: string; expiresAt: Date }> {
+  // Do NOT include scope in refresh requests — eBay uses the original authorization scopes.
+  // Requesting additional scopes here causes a rejection if they weren't in the original grant.
   const response = await axios.post(
     TOKEN_URL,
     new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      scope: SCOPES,
     }),
     {
       headers: {
