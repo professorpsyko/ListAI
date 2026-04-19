@@ -117,6 +117,11 @@ async function fetchSellerPolicies(token: string): Promise<SellerPolicies> {
     axios.get(`${base}/sell/account/v1/payment_policy?marketplace_id=EBAY_US`, { headers, timeout: 10000 }),
   ]);
 
+  // Log any failures so we can diagnose scope / auth issues
+  if (fp.status === 'rejected') console.warn('[eBay] fulfillment_policy fetch failed:', fp.reason?.response?.data ?? fp.reason?.message);
+  if (rp.status === 'rejected') console.warn('[eBay] return_policy fetch failed:', rp.reason?.response?.data ?? rp.reason?.message);
+  if (pp.status === 'rejected') console.warn('[eBay] payment_policy fetch failed:', pp.reason?.response?.data ?? pp.reason?.message);
+
   const fulfillmentPolicyId =
     fp.status === 'fulfilled' ? (fp.value.data?.fulfillmentPolicies?.[0]?.fulfillmentPolicyId ?? null) : null;
   const returnPolicyId =

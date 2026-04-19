@@ -11,11 +11,12 @@ const TOKEN_URL = isSandbox
   ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
   : 'https://api.ebay.com/identity/v1/oauth2/token';
 
-// Scopes needed for the Trading API AddItem call.
-// NOTE: sell.item and sell.inventory are REST-only scopes and require special app approval.
-// The Trading API (AddItem/XML) only requires api_scope.
+// Scopes needed:
+//  - api_scope            → Trading API (AddItem)
+//  - sell.account.readonly → Account REST API (fetch business policy IDs)
 const SCOPES = [
   'https://api.ebay.com/oauth/api_scope',
+  'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
 ].join(' ');
 
 function basicCredentials(): string {
