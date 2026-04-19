@@ -42,7 +42,13 @@ export interface ListingState {
   identification: IdentificationResult | null;
   identificationStatus: 'idle' | 'loading' | 'done' | 'error';
 
-  // Step 3 — Details
+  // Step 3 — Category & Aspects
+  ebayCategoryId: string | null;
+  ebayCategoryName: string | null;
+  itemAspects: Record<string, string>;
+  aspectsConfirmed: boolean;
+
+  // Step 3b — Details
   condition: string;
   color: string;
   specialNotes: string;
@@ -91,6 +97,9 @@ export interface ListingState {
   setImageJobStatus: (s: ListingState['imageJobStatus']) => void;
   setIdentification: (r: IdentificationResult | null) => void;
   setIdentificationStatus: (s: ListingState['identificationStatus']) => void;
+  setEbayCategory: (id: string | null, name: string | null) => void;
+  setItemAspects: (aspects: Record<string, string>) => void;
+  setAspectsConfirmed: (v: boolean) => void;
   setCondition: (v: string) => void;
   setColor: (v: string) => void;
   setSpecialNotes: (v: string) => void;
@@ -125,6 +134,10 @@ const initialState = {
   imageJobStatus: 'PENDING' as const,
   identification: null,
   identificationStatus: 'idle' as const,
+  ebayCategoryId: null,
+  ebayCategoryName: null,
+  itemAspects: {},
+  aspectsConfirmed: false,
   condition: '',
   color: '',
   specialNotes: '',
@@ -162,6 +175,9 @@ export const useListingStore = create<ListingState>()(
       setImageJobStatus: (s) => set({ imageJobStatus: s }),
       setIdentification: (r) => set({ identification: r }),
       setIdentificationStatus: (s) => set({ identificationStatus: s }),
+      setEbayCategory: (id, name) => set({ ebayCategoryId: id, ebayCategoryName: name }),
+      setItemAspects: (aspects) => set({ itemAspects: aspects }),
+      setAspectsConfirmed: (v) => set({ aspectsConfirmed: v }),
       setCondition: (v) => set({ condition: v }),
       setColor: (v) => set({ color: v }),
       setSpecialNotes: (v) => set({ specialNotes: v }),

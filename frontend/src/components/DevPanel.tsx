@@ -7,15 +7,16 @@ import clsx from 'clsx';
 const STEPS = [
   { n: 1, label: 'Photos' },
   { n: 2, label: 'Identify' },
-  { n: 3, label: 'Details' },
-  { n: 4, label: 'Price' },
-  { n: 5, label: 'Title' },
-  { n: 6, label: 'Description' },
-  { n: 7, label: 'Shipping' },
-  { n: 8, label: 'Preview' },
+  { n: 3, label: 'Aspects' },
+  { n: 4, label: 'Details' },
+  { n: 5, label: 'Price' },
+  { n: 6, label: 'Title' },
+  { n: 7, label: 'Description' },
+  { n: 8, label: 'Shipping' },
+  { n: 9, label: 'Preview' },
 ] as const;
 
-type StepN = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type StepN = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 export default function DevPanel() {
   const { id } = useParams<{ id: string }>();
@@ -81,20 +82,23 @@ export default function DevPanel() {
         if (store.identification) setDevPin(2, { identification: store.identification });
         break;
       case 3:
-        setDevPin(3, { condition: store.condition, color: store.color, specialNotes: store.specialNotes });
+        if (store.ebayCategoryId) setDevPin(3, { ebayCategoryId: store.ebayCategoryId, ebayCategoryName: store.ebayCategoryName, itemAspects: store.itemAspects });
         break;
       case 4:
-        if (store.pricingResearch) setDevPin(4, { pricingResearch: store.pricingResearch, suggestedPrice: store.finalPrice });
+        setDevPin(4, { condition: store.condition, color: store.color, specialNotes: store.specialNotes });
         break;
       case 5:
-        if (store.itemTitle) setDevPin(5, { itemTitle: store.itemTitle });
+        if (store.pricingResearch) setDevPin(5, { pricingResearch: store.pricingResearch, suggestedPrice: store.finalPrice });
         break;
       case 6:
-        if (store.itemDescription) setDevPin(6, { itemDescription: store.itemDescription });
+        if (store.itemTitle) setDevPin(6, { itemTitle: store.itemTitle });
         break;
       case 7:
+        if (store.itemDescription) setDevPin(7, { itemDescription: store.itemDescription });
+        break;
+      case 8:
         if (store.shippingService) {
-          setDevPin(7, {
+          setDevPin(8, {
             shippingService: store.shippingService,
             shippingCost: store.shippingCost,
             handlingTime: store.handlingTime,
@@ -111,11 +115,12 @@ export default function DevPanel() {
     switch (n) {
       case 1: return !!store.labelPhotoUrl && store.itemPhotoUrls.length > 0;
       case 2: return !!store.identification?.identification;
-      case 3: return !!store.condition;
-      case 4: return !!store.pricingResearch;
-      case 5: return !!store.itemTitle;
-      case 6: return !!store.itemDescription;
-      case 7: return !!store.shippingService;
+      case 3: return !!store.ebayCategoryId;
+      case 4: return !!store.condition;
+      case 5: return !!store.pricingResearch;
+      case 6: return !!store.itemTitle;
+      case 7: return !!store.itemDescription;
+      case 8: return !!store.shippingService;
       default: return false;
     }
   }
@@ -124,11 +129,12 @@ export default function DevPanel() {
     switch (n) {
       case 1: return store.itemPhotoUrls.length ? `${store.itemPhotoUrls.length} item photos` : '';
       case 2: return store.identification?.identification?.slice(0, 28) ?? '';
-      case 3: return store.condition || '';
-      case 4: return store.finalPrice ? `$${store.finalPrice}` : '';
-      case 5: return store.itemTitle?.slice(0, 28) ?? '';
-      case 6: return store.itemDescription ? 'Written' : '';
-      case 7: return store.shippingService?.slice(0, 24) ?? '';
+      case 3: return store.ebayCategoryName?.slice(0, 28) ?? (store.ebayCategoryId ? `ID: ${store.ebayCategoryId}` : '');
+      case 4: return store.condition || '';
+      case 5: return store.finalPrice ? `$${store.finalPrice}` : '';
+      case 6: return store.itemTitle?.slice(0, 28) ?? '';
+      case 7: return store.itemDescription ? 'Written' : '';
+      case 8: return store.shippingService?.slice(0, 24) ?? '';
       default: return '';
     }
   }

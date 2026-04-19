@@ -59,9 +59,19 @@ router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
     startingBid: z.number().optional(),
     imageUrls: z.array(z.string()).optional(),
     processedImageUrls: z.array(z.string()).optional(),
+    itemAspects: z.record(z.union([z.string(), z.array(z.string())])).optional(),
+    ebayCategoryId: z.string().optional(),
+    ebayCategoryName: z.string().optional(),
   });
 
-  const data = schema.parse(req.body);
+  const parsed = schema.parse(req.body);
+  // ebayCategoryName is a convenience alias for itemCategory — map it before writing to DB
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { ebayCategoryName, ...rest } = parsed;
+  const data = {
+    ...rest,
+    ...(ebayCategoryName !== undefined ? { itemCategory: ebayCategoryName } : {}),
+  };
   const listing = await prisma.listing.updateMany({
     where: { id: req.params.id, userId: auth.user.id },
     data,
@@ -159,6 +169,8 @@ router.get('/:id/job-status', requireAuth, async (req: Request, res: Response) =
       pricingResearch: true,
       suggestedPrice: true,
       shippingSuggestion: true,
+      itemAspects: true,
+      ebayCategoryId: true,
     },
   });
   if (!listing) {
@@ -462,6 +474,7 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
       description: listing.itemDescription || '',
       category: listing.itemCategory || '',
       categoryId: identification?.ebayCategoryId || null,
+      confirmedCategoryId: listing.ebayCategoryId || null,
       condition: listing.itemCondition || 'Used — good',
       price: listing.finalPrice || listing.suggestedPrice || 0,
       listingType: listing.listingType,
@@ -473,6 +486,7 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
       acceptReturns: listing.acceptReturns,
       returnWindow: listing.returnWindow || undefined,
       imageUrls: listing.processedImageUrls.length ? listing.processedImageUrls : listing.imageUrls,
+      itemAspects: listing.itemAspects as Record<string, string | string[]> | undefined,
     }, ebayToken, {
       fulfillmentPolicyId: userRecord?.ebayFulfillmentPolicyId ?? null,
       returnPolicyId: userRecord?.ebayReturnPolicyId ?? null,

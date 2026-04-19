@@ -9,6 +9,7 @@ import { errorHandler } from './middleware/error';
 import listingsRouter from './routes/listings';
 import usersRouter from './routes/users';
 import ebayCallbackRouter from './routes/ebay-callback';
+import ebayTaxonomyRouter from './routes/ebay-taxonomy';
 import { startImageWorker } from './workers/image-worker';
 import { startPricingWorker } from './workers/pricing-worker';
 import { config } from './config';
@@ -49,6 +50,7 @@ app.use(clerkAuth);
 // Routes
 app.use('/api/listings', listingsRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/ebay/taxonomy', ebayTaxonomyRouter);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

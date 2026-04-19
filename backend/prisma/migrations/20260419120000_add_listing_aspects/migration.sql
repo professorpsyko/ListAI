@@ -1,0 +1,3 @@
+ALTER TABLE "Listing"
+  ADD COLUMN IF NOT EXISTS "itemAspects" JSONB,
+  ADD COLUMN IF NOT EXISTS "ebayCategoryId" TEXT;

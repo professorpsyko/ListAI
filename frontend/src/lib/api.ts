@@ -72,6 +72,14 @@ export const generateDescription = (id: string) =>
 export const publishListing = (id: string) =>
   api.post(`/listings/${id}/publish`).then((r) => r.data);
 
+// ─── eBay Taxonomy ────────────────────────────────────────────────────────────
+
+export const searchEbayCategories = (q: string) =>
+  api.get(`/ebay/taxonomy/suggestions?q=${encodeURIComponent(q)}`).then((r) => r.data);
+
+export const getEbayCategoryAspects = (categoryId: string) =>
+  api.get(`/ebay/taxonomy/aspects/${categoryId}`).then((r) => r.data);
+
 // ─── Users / Settings ─────────────────────────────────────────────────────────
 
 export const getMe = () => api.get('/users/me').then((r) => r.data);

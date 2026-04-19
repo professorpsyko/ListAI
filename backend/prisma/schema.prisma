@@ -63,6 +63,8 @@ model Listing {
   imageJobStatus     String   @default("PENDING")
   pricingJobId       String?
   pricingJobStatus   String   @default("PENDING")
+  itemAspects        Json?
+  ebayCategoryId     String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

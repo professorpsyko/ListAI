@@ -52,6 +52,7 @@ interface ListingData {
   description: string;
   category: string;
   categoryId: string | null;
+  confirmedCategoryId?: string | null;
   condition: string;
   price: number;
   listingType: string;
@@ -63,6 +64,7 @@ interface ListingData {
   acceptReturns: boolean;
   returnWindow?: number;
   imageUrls: string[];
+  itemAspects?: Record<string, string | string[]>;
 }
 
 // Map condition strings to eBay condition IDs
@@ -192,9 +194,12 @@ export async function publishListing(
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
 
+  const resolvedCategoryId = data.confirmedCategoryId || data.categoryId || '9355';
+
   console.log('[eBay] Listing details:', {
     category: data.category,
-    categoryId: data.categoryId,
+    categoryId: resolvedCategoryId,
+    confirmedCategoryId: data.confirmedCategoryId,
     conditionId,
     title: data.title.slice(0, 40),
   });
@@ -259,7 +264,7 @@ export async function publishListing(
     <Title>${escapeXml(data.title.slice(0, 80))}</Title>
     <Description><![CDATA[${data.description}]]></Description>
     <PrimaryCategory>
-      <CategoryID>${data.categoryId || '9355'}</CategoryID>
+      <CategoryID>${resolvedCategoryId}</CategoryID>
     </PrimaryCategory>
     <ConditionID>${conditionId}</ConditionID>
     <StartPrice>${data.listingType === 'AUCTION' ? (data.startingBid ?? 0.99) : data.price}</StartPrice>
@@ -274,12 +279,7 @@ export async function publishListing(
     </PictureDetails>
     ${legacyReturnsXml}
     ${sellerProfilesXml}
-    <ItemSpecifics>
-      <NameValueList>
-        <Name>Graded</Name>
-        <Value>No</Value>
-      </NameValueList>
-    </ItemSpecifics>
+    ${buildItemSpecificsXml(data.itemAspects)}
   </Item>
 </AddItemRequest>`;
 
@@ -332,6 +332,29 @@ export async function publishListing(
     : `https://www.ebay.com/itm/${itemId}`;
 
   return { ebayItemId: itemId, listingUrl };
+}
+
+/**
+ * Builds the <ItemSpecifics> XML block from a key/value map.
+ * Each value may be a single string or an array of strings.
+ * Returns an empty string when aspects is empty or undefined.
+ */
+function buildItemSpecificsXml(aspects?: Record<string, string | string[]>): string {
+  if (!aspects || Object.keys(aspects).length === 0) return '';
+
+  const nameValueLists = Object.entries(aspects)
+    .filter(([, v]) => {
+      const vals = Array.isArray(v) ? v : [v];
+      return vals.some((s) => s && s.trim());
+    })
+    .map(([name, value]) => {
+      const vals = (Array.isArray(value) ? value : [value]).filter((s) => s && s.trim());
+      const valuesXml = vals.map((v) => `<Value>${escapeXml(v)}</Value>`).join('\n        ');
+      return `<NameValueList>\n        <Name>${escapeXml(name)}</Name>\n        ${valuesXml}\n      </NameValueList>`;
+    })
+    .join('\n      ');
+
+  return `<ItemSpecifics>\n      ${nameValueLists}\n    </ItemSpecifics>`;
 }
 
 function escapeXml(str: string): string {

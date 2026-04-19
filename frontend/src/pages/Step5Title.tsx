@@ -47,8 +47,8 @@ export default function Step5Title() {
   async function handleNext() {
     if (!id || !store.itemTitle || overLimit) return;
     await updateListing(id, { itemTitle: store.itemTitle });
-    store.setCurrentStep(6);
-    navigate(`/listing/${id}/step/6`);
+    store.setCurrentStep(7);
+    navigate(`/listing/${id}/step/7`);
   }
 
   return (

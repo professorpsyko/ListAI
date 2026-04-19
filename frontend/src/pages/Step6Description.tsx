@@ -132,8 +132,8 @@ export default function Step6Description() {
   async function handleNext() {
     if (!id || !store.itemDescription) return;
     await updateListing(id, { itemDescription: store.itemDescription });
-    store.setCurrentStep(7);
-    navigate(`/listing/${id}/step/7`);
+    store.setCurrentStep(8);
+    navigate(`/listing/${id}/step/8`);
   }
 
   return (

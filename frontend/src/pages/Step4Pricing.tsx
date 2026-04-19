@@ -89,7 +89,7 @@ export default function Step4Pricing() {
 
   // Check for pinned pricing data, otherwise trigger research
   useEffect(() => {
-    const pin = getDevPin(4);
+    const pin = getDevPin(5);
     if (pin && store.pricingJobStatus === 'PENDING') {
       store.setPricingResearch(pin.pricingResearch);
       if (pin.suggestedPrice) store.setFinalPrice(pin.suggestedPrice);
@@ -124,8 +124,8 @@ export default function Step4Pricing() {
   async function handleNext() {
     if (!id || !store.finalPrice) return;
     await updateListing(id, { finalPrice: parseFloat(store.finalPrice), suggestedPrice: pricing?.suggestedPrice });
-    store.setCurrentStep(5);
-    navigate(`/listing/${id}/step/5`);
+    store.setCurrentStep(6);
+    navigate(`/listing/${id}/step/6`);
   }
 
   function buildEbayUrl() {
@@ -149,7 +149,7 @@ export default function Step4Pricing() {
             <span><strong>Pinned data</strong> — skipped pricing research API</span>
           </div>
           <button
-            onClick={() => { clearDevPin(4); setUsingPin(false); store.setPricingJobStatus('PENDING'); store.setPricingResearch(null); if (id) triggerPriceResearch(id).catch(() => {}); }}
+            onClick={() => { clearDevPin(5); setUsingPin(false); store.setPricingJobStatus('PENDING'); store.setPricingResearch(null); if (id) triggerPriceResearch(id).catch(() => {}); }}
             className="text-xs text-green-600 hover:text-green-800 underline"
           >
             Run live

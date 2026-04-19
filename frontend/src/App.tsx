@@ -6,12 +6,13 @@ import { syncEmail, registerTokenGetter } from './lib/api';
 import WizardLayout from './components/WizardLayout';
 import Step1Photos from './pages/Step1Photos';
 import Step2Identify from './pages/Step2Identify';
-import Step3Details from './pages/Step3Details';
-import Step4Pricing from './pages/Step4Pricing';
-import Step5Title from './pages/Step5Title';
-import Step6Description from './pages/Step6Description';
-import Step7Shipping from './pages/Step7Shipping';
-import Step8Preview from './pages/Step8Preview';
+import Step3Aspects from './pages/Step3Aspects';
+import Step4Details from './pages/Step3Details';
+import Step5Pricing from './pages/Step4Pricing';
+import Step6Title from './pages/Step5Title';
+import Step7Description from './pages/Step6Description';
+import Step8Shipping from './pages/Step7Shipping';
+import Step9Preview from './pages/Step8Preview';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 
@@ -70,12 +71,13 @@ export default function App() {
         <Route path="/listing/:id" element={<RequireAuth><WizardLayout /></RequireAuth>}>
           <Route path="step/1" element={<Step1Photos />} />
           <Route path="step/2" element={<Step2Identify />} />
-          <Route path="step/3" element={<Step3Details />} />
-          <Route path="step/4" element={<Step4Pricing />} />
-          <Route path="step/5" element={<Step5Title />} />
-          <Route path="step/6" element={<Step6Description />} />
-          <Route path="step/7" element={<Step7Shipping />} />
-          <Route path="step/8" element={<Step8Preview />} />
+          <Route path="step/3" element={<Step3Aspects />} />
+          <Route path="step/4" element={<Step4Details />} />
+          <Route path="step/5" element={<Step5Pricing />} />
+          <Route path="step/6" element={<Step6Title />} />
+          <Route path="step/7" element={<Step7Description />} />
+          <Route path="step/8" element={<Step8Shipping />} />
+          <Route path="step/9" element={<Step9Preview />} />
           <Route index element={<Navigate to="step/1" replace />} />
         </Route>
 

@@ -27,6 +27,7 @@ export default function Step3Details() {
 
   const canProceed = !!store.condition;
   useStepAction('Next: Pricing \u2192', !canProceed, handleNext);
+  // Step 4 in the wizard (was step 3 before Aspects was inserted)
 
   async function handleNext() {
     if (!id || !canProceed) return;
@@ -35,8 +36,8 @@ export default function Step3Details() {
       itemColor: store.color,
       specialNotes: store.specialNotes,
     });
-    store.setCurrentStep(4);
-    navigate(`/listing/${id}/step/4`);
+    store.setCurrentStep(5);
+    navigate(`/listing/${id}/step/5`);
   }
 
   return (

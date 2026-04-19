@@ -68,8 +68,8 @@ export default function Step7Shipping() {
       acceptReturns: store.acceptReturns,
       returnWindow: store.acceptReturns ? store.returnWindow : undefined,
     });
-    store.setCurrentStep(8);
-    navigate(`/listing/${id}/step/8`);
+    store.setCurrentStep(9);
+    navigate(`/listing/${id}/step/9`);
   }
 
   const suggestion = store.shippingSuggestion;
