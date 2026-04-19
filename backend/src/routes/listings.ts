@@ -423,7 +423,14 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
   let ebayToken: string | undefined;
   const userRecord = await prisma.user.findUnique({
     where: { id: auth.user.id },
-    select: { ebayAccessToken: true, ebayRefreshToken: true, ebayTokenExpiry: true },
+    select: {
+      ebayAccessToken: true,
+      ebayRefreshToken: true,
+      ebayTokenExpiry: true,
+      ebayFulfillmentPolicyId: true,
+      ebayReturnPolicyId: true,
+      ebayPaymentPolicyId: true,
+    },
   });
 
   if (userRecord?.ebayAccessToken && userRecord?.ebayRefreshToken) {
@@ -466,7 +473,11 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
       acceptReturns: listing.acceptReturns,
       returnWindow: listing.returnWindow || undefined,
       imageUrls: listing.processedImageUrls.length ? listing.processedImageUrls : listing.imageUrls,
-    }, ebayToken);
+    }, ebayToken, {
+      fulfillmentPolicyId: userRecord?.ebayFulfillmentPolicyId ?? null,
+      returnPolicyId: userRecord?.ebayReturnPolicyId ?? null,
+      paymentPolicyId: userRecord?.ebayPaymentPolicyId ?? null,
+    });
 
     await prisma.listing.update({
       where: { id: req.params.id },

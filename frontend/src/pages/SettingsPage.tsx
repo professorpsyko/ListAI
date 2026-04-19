@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSettings, updateSettings, getMe, clearStyleMemory, importHistory, getEbayStatus, getEbayAuthUrl, disconnectEbay } from '../lib/api';
+import { getSettings, updateSettings, getMe, clearStyleMemory, importHistory, getEbayStatus, getEbayAuthUrl, disconnectEbay, updateEbayPolicies } from '../lib/api';
 
 export default function SettingsPage() {
   const { user } = useUser();
@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [ebayConnecting, setEbayConnecting] = useState(false);
   const [ebayFeedback, setEbayFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [policyFields, setPolicyFields] = useState({ fulfillment: '', returns: '', payment: '' });
+  const [policySaved, setPolicySaved] = useState(false);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
@@ -21,6 +23,17 @@ export default function SettingsPage() {
     queryKey: ['ebay-status'],
     queryFn: getEbayStatus,
   });
+
+  // Sync saved policy IDs into local fields when ebayStatus loads
+  useEffect(() => {
+    if (ebayStatus) {
+      setPolicyFields({
+        fulfillment: ebayStatus.fulfillmentPolicyId ?? '',
+        returns: ebayStatus.returnPolicyId ?? '',
+        payment: ebayStatus.paymentPolicyId ?? '',
+      });
+    }
+  }, [ebayStatus]);
 
   const disconnectMut = useMutation({
     mutationFn: disconnectEbay,
@@ -56,6 +69,19 @@ export default function SettingsPage() {
       setEbayConnecting(false);
     }
   }
+
+  const savePoliciesMut = useMutation({
+    mutationFn: () => updateEbayPolicies({
+      ebayFulfillmentPolicyId: policyFields.fulfillment || null,
+      ebayReturnPolicyId: policyFields.returns || null,
+      ebayPaymentPolicyId: policyFields.payment || null,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ebay-status'] });
+      setPolicySaved(true);
+      setTimeout(() => setPolicySaved(false), 3000);
+    },
+  });
 
   const updateMut = useMutation({
     mutationFn: updateSettings,
@@ -120,24 +146,67 @@ export default function SettingsPage() {
           )}
 
           {ebayStatus?.connected ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-700">eBay account connected</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Token auto-refreshes · expires {ebayStatus.tokenExpiry
-                    ? new Date(ebayStatus.tokenExpiry).toLocaleDateString()
-                    : 'unknown'}
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">eBay account connected</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Token auto-refreshes · expires {ebayStatus.tokenExpiry
+                      ? new Date(ebayStatus.tokenExpiry).toLocaleDateString()
+                      : 'unknown'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Connected</span>
+                  <button
+                    onClick={() => disconnectMut.mutate()}
+                    disabled={disconnectMut.isPending}
+                    className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Connected</span>
-                <button
-                  onClick={() => disconnectMut.mutate()}
-                  disabled={disconnectMut.isPending}
-                  className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  Disconnect
-                </button>
+
+              {/* Business Policy IDs */}
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Business Policy IDs</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Required if your eBay account uses Business Policies.{' '}
+                    <a href="https://www.ebay.com/sbr/sellerHub/account/business-policies" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                      Find your IDs in Seller Hub →
+                    </a>
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { label: 'Shipping / Fulfillment Policy ID', key: 'fulfillment' as const },
+                    { label: 'Returns Policy ID', key: 'returns' as const },
+                    { label: 'Payment Policy ID (optional)', key: 'payment' as const },
+                  ].map(({ label, key }) => (
+                    <div key={key}>
+                      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                      <input
+                        type="text"
+                        value={policyFields[key]}
+                        onChange={(e) => setPolicyFields((p) => ({ ...p, [key]: e.target.value }))}
+                        placeholder="e.g. 12345678"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => savePoliciesMut.mutate()}
+                    disabled={savePoliciesMut.isPending}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60"
+                  >
+                    {savePoliciesMut.isPending ? 'Saving…' : 'Save Policy IDs'}
+                  </button>
+                  {policySaved && <span className="text-sm text-green-600">✓ Saved</span>}
+                </div>
               </div>
             </div>
           ) : (

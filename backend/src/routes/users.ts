@@ -131,12 +131,38 @@ router.get('/me/ebay/status', requireAuth, async (req: Request, res: Response) =
   const auth = req as AuthenticatedRequest;
   const user = await prisma.user.findUnique({
     where: { id: auth.user.id },
-    select: { ebayAccessToken: true, ebayTokenExpiry: true },
+    select: {
+      ebayAccessToken: true,
+      ebayTokenExpiry: true,
+      ebayFulfillmentPolicyId: true,
+      ebayReturnPolicyId: true,
+      ebayPaymentPolicyId: true,
+    },
   });
   res.json({
     connected: !!user?.ebayAccessToken,
     tokenExpiry: user?.ebayTokenExpiry ?? null,
+    fulfillmentPolicyId: user?.ebayFulfillmentPolicyId ?? null,
+    returnPolicyId: user?.ebayReturnPolicyId ?? null,
+    paymentPolicyId: user?.ebayPaymentPolicyId ?? null,
   });
+});
+
+// Save eBay Business Policy IDs
+router.patch('/me/ebay/policies', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const schema = z.object({
+    ebayFulfillmentPolicyId: z.string().optional().nullable(),
+    ebayReturnPolicyId: z.string().optional().nullable(),
+    ebayPaymentPolicyId: z.string().optional().nullable(),
+  });
+  const data = schema.parse(req.body);
+  const user = await prisma.user.update({
+    where: { id: auth.user.id },
+    data,
+    select: { ebayFulfillmentPolicyId: true, ebayReturnPolicyId: true, ebayPaymentPolicyId: true },
+  });
+  res.json(user);
 });
 
 // Disconnect eBay account

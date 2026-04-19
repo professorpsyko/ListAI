@@ -140,7 +140,11 @@ export interface PublishResult {
   listingUrl: string;
 }
 
-export async function publishListing(data: ListingData, overrideToken?: string): Promise<PublishResult> {
+export async function publishListing(
+  data: ListingData,
+  overrideToken?: string,
+  storedPolicyIds?: { fulfillmentPolicyId?: string | null; returnPolicyId?: string | null; paymentPolicyId?: string | null },
+): Promise<PublishResult> {
   const isSandbox = config.EBAY_SANDBOX_MODE === 'true';
   if (isSandbox) {
     console.warn('[eBay] ⚠️  SANDBOX mode is ON — listing will NOT appear on real eBay. Set EBAY_SANDBOX_MODE=false to publish live.');
@@ -158,9 +162,21 @@ export async function publishListing(data: ListingData, overrideToken?: string):
   const isLegacyToken = token.startsWith('v^1.1');
   console.log(`[eBay] Token type: ${isLegacyToken ? 'legacy Auth\'n\'Auth (XML)' : 'OAuth Bearer (header)'}`);
 
-  // For OAuth tokens, try to fetch Business Policies (many sellers have opted in)
+  // Resolve business policy IDs:
+  //   1. Use stored IDs from user settings (fastest, no extra API call)
+  //   2. Fall back to Account REST API fetch (requires sell.account.readonly scope)
+  //   3. Fall back to legacy fields (rejected if seller has opted into Business Policies)
   let sellerPolicies: SellerPolicies | null = null;
-  if (!isLegacyToken) {
+
+  if (storedPolicyIds?.fulfillmentPolicyId) {
+    // Use pre-saved policy IDs — no API call needed
+    sellerPolicies = {
+      fulfillmentPolicyId: storedPolicyIds.fulfillmentPolicyId ?? null,
+      returnPolicyId: storedPolicyIds.returnPolicyId ?? null,
+      paymentPolicyId: storedPolicyIds.paymentPolicyId ?? null,
+    };
+    console.log('[eBay] Using stored seller policy IDs:', sellerPolicies);
+  } else if (!isLegacyToken) {
     try {
       sellerPolicies = await fetchSellerPolicies(token);
     } catch (err) {

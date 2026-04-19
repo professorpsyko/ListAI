@@ -12,9 +12,12 @@ model User {
   clerkId          String    @unique
   email            String    @unique
   createdAt        DateTime  @default(now())
-  ebayAccessToken  String?
-  ebayRefreshToken String?
-  ebayTokenExpiry  DateTime?
+  ebayAccessToken         String?
+  ebayRefreshToken        String?
+  ebayTokenExpiry         DateTime?
+  ebayFulfillmentPolicyId String?
+  ebayReturnPolicyId      String?
+  ebayPaymentPolicyId     String?
   settings         Settings?
   listings         Listing[]
 }
