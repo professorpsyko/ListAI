@@ -9,6 +9,12 @@ function getApiUrl(): string {
   return config.EBAY_SANDBOX_MODE === 'true' ? SANDBOX_URL : PRODUCTION_URL;
 }
 
+function getRestBase(): string {
+  return config.EBAY_SANDBOX_MODE === 'true'
+    ? 'https://api.sandbox.ebay.com'
+    : 'https://api.ebay.com';
+}
+
 // Map common eBay error codes to user-friendly messages
 const EBAY_ERROR_MAP: Record<number, string> = {
   21916628: 'Your eBay token has expired. Please reconnect your eBay account in Settings.',
@@ -25,14 +31,15 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916076: 'Invalid condition for this category.',
   21916110: 'Quantity must be at least 1.',
   10009: 'Item location is required. Please try again.',
-  931: 'Your eBay auth token has expired or is invalid. Generate a new User Token at developer.ebay.com → My Account → User Tokens, then update EBAY_AUTH_TOKEN in your Railway environment variables.',
-  932: 'Your eBay auth token has expired. Please generate a new one at developer.ebay.com and update EBAY_AUTH_TOKEN in Railway.',
-  21916984: 'IAF (OAuth) token is invalid or expired. Go to developer.ebay.com, generate a fresh User Access Token, and update EBAY_AUTH_TOKEN in Railway.',
+  931: 'Your eBay auth token has expired or is invalid. Please reconnect your eBay account in Settings.',
+  932: 'Your eBay auth token has expired. Please reconnect your eBay account in Settings.',
+  21916984: 'OAuth token is invalid or expired. Please reconnect your eBay account in Settings.',
   10007: 'Authentication failed. Please reconnect your eBay account.',
   291: 'Invalid user token. Please reconnect your eBay account in Settings.',
   21917053: 'Start price must be greater than zero for auction listings.',
   21916608: 'Reserve price must be higher than the start price.',
   21916178: 'Scheduled listing time is in the past.',
+  21919456: 'Business policies error — could not load your eBay shipping/return policies. Please try again.',
 };
 
 function mapEbayError(code: number, rawMessage: string): string {
@@ -83,6 +90,46 @@ const SHIPPING_SERVICE_MAP: Record<string, string> = {
   'Free shipping (I\'ll build it into the price)': 'USPSPriority',
 };
 
+// ─── Business Policies ────────────────────────────────────────────────────────
+
+interface SellerPolicies {
+  fulfillmentPolicyId: string | null;
+  returnPolicyId: string | null;
+  paymentPolicyId: string | null;
+}
+
+/**
+ * Fetch the seller's existing Business Policies via the eBay Account REST API.
+ * Sellers who have opted into Business Policies cannot use legacy ShippingDetails /
+ * ReturnPolicy XML fields — they must reference policy IDs via <SellerProfiles>.
+ */
+async function fetchSellerPolicies(token: string): Promise<SellerPolicies> {
+  const base = getRestBase();
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+    'Accept': 'application/json',
+  };
+
+  const [fp, rp, pp] = await Promise.allSettled([
+    axios.get(`${base}/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US`, { headers, timeout: 10000 }),
+    axios.get(`${base}/sell/account/v1/return_policy?marketplace_id=EBAY_US`, { headers, timeout: 10000 }),
+    axios.get(`${base}/sell/account/v1/payment_policy?marketplace_id=EBAY_US`, { headers, timeout: 10000 }),
+  ]);
+
+  const fulfillmentPolicyId =
+    fp.status === 'fulfilled' ? (fp.value.data?.fulfillmentPolicies?.[0]?.fulfillmentPolicyId ?? null) : null;
+  const returnPolicyId =
+    rp.status === 'fulfilled' ? (rp.value.data?.returnPolicies?.[0]?.returnPolicyId ?? null) : null;
+  const paymentPolicyId =
+    pp.status === 'fulfilled' ? (pp.value.data?.paymentPolicies?.[0]?.paymentPolicyId ?? null) : null;
+
+  console.log('[eBay] Seller policies:', { fulfillmentPolicyId, returnPolicyId, paymentPolicyId });
+  return { fulfillmentPolicyId, returnPolicyId, paymentPolicyId };
+}
+
+// ─── Publish ──────────────────────────────────────────────────────────────────
+
 export interface PublishResult {
   ebayItemId: string;
   listingUrl: string;
@@ -106,6 +153,19 @@ export async function publishListing(data: ListingData, overrideToken?: string):
   const isLegacyToken = token.startsWith('v^1.1');
   console.log(`[eBay] Token type: ${isLegacyToken ? 'legacy Auth\'n\'Auth (XML)' : 'OAuth Bearer (header)'}`);
 
+  // For OAuth tokens, try to fetch Business Policies (many sellers have opted in)
+  let sellerPolicies: SellerPolicies | null = null;
+  if (!isLegacyToken) {
+    try {
+      sellerPolicies = await fetchSellerPolicies(token);
+    } catch (err) {
+      console.warn('[eBay] Could not fetch seller policies, will try legacy fields:', (err as Error).message);
+    }
+  }
+
+  const useBusinessPolicies = !!(sellerPolicies?.fulfillmentPolicyId);
+  console.log(`[eBay] Using ${useBusinessPolicies ? 'Business Policies' : 'legacy'} shipping/returns fields`);
+
   const conditionId = CONDITION_MAP[data.condition] ?? 4000;
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
@@ -121,16 +181,45 @@ export async function publishListing(data: ListingData, overrideToken?: string):
     : `<ListingType>FixedPriceItem</ListingType>
        <ListingDuration>GTC</ListingDuration>`;
 
-  const returnsXml = data.acceptReturns
-    ? `<ReturnPolicy>
-        <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
-        <RefundOption>MoneyBack</RefundOption>
-        <ReturnsWithinOption>Days_${data.returnWindow ?? 30}</ReturnsWithinOption>
-        <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
-       </ReturnPolicy>`
-    : `<ReturnPolicy>
-        <ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption>
-       </ReturnPolicy>`;
+  // Business Policies: reference existing policy IDs (no legacy fields)
+  const sellerProfilesXml = useBusinessPolicies
+    ? `<SellerProfiles>
+        <SellerShippingProfile>
+          <ShippingProfileID>${sellerPolicies!.fulfillmentPolicyId}</ShippingProfileID>
+        </SellerShippingProfile>
+        ${sellerPolicies!.returnPolicyId ? `<SellerReturnProfile>
+          <ReturnProfileID>${sellerPolicies!.returnPolicyId}</ReturnProfileID>
+        </SellerReturnProfile>` : ''}
+        ${sellerPolicies!.paymentPolicyId ? `<SellerPaymentProfile>
+          <PaymentProfileID>${sellerPolicies!.paymentPolicyId}</PaymentProfileID>
+        </SellerPaymentProfile>` : ''}
+      </SellerProfiles>`
+    : '';
+
+  // Legacy shipping/return fields (only used when not on Business Policies)
+  const legacyShippingXml = !useBusinessPolicies
+    ? `<ShippingDetails>
+        <ShippingServiceOptions>
+          <ShippingServicePriority>1</ShippingServicePriority>
+          <ShippingService>${shippingServiceCode}</ShippingService>
+          <ShippingServiceCost>${isFreeShipping ? 0 : data.shippingCost}</ShippingServiceCost>
+          <FreeShipping>${isFreeShipping}</FreeShipping>
+        </ShippingServiceOptions>
+      </ShippingDetails>`
+    : '';
+
+  const legacyReturnsXml = !useBusinessPolicies
+    ? (data.acceptReturns
+        ? `<ReturnPolicy>
+            <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
+            <RefundOption>MoneyBack</RefundOption>
+            <ReturnsWithinOption>Days_${data.returnWindow ?? 30}</ReturnsWithinOption>
+            <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
+           </ReturnPolicy>`
+        : `<ReturnPolicy>
+            <ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption>
+           </ReturnPolicy>`)
+    : '';
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -150,18 +239,12 @@ export async function publishListing(data: ListingData, overrideToken?: string):
     <Location>United States</Location>
     <Currency>USD</Currency>
     <DispatchTimeMax>3</DispatchTimeMax>
-    <ShippingDetails>
-      <ShippingServiceOptions>
-        <ShippingServicePriority>1</ShippingServicePriority>
-        <ShippingService>${shippingServiceCode}</ShippingService>
-        <ShippingServiceCost>${isFreeShipping ? 0 : data.shippingCost}</ShippingServiceCost>
-        <FreeShipping>${isFreeShipping}</FreeShipping>
-      </ShippingServiceOptions>
-    </ShippingDetails>
+    ${legacyShippingXml}
     <PictureDetails>
       ${pictureDetails}
     </PictureDetails>
-    ${returnsXml}
+    ${legacyReturnsXml}
+    ${sellerProfilesXml}
   </Item>
 </AddItemRequest>`;
 
