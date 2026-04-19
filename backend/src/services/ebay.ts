@@ -40,6 +40,7 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916608: 'Reserve price must be higher than the start price.',
   21916178: 'Scheduled listing time is in the past.',
   21919456: 'Business policies error — could not load your eBay shipping/return policies. Please try again.',
+  21920370: 'eBay deprecation warning for item aspects — listing may have been created. Check your eBay Seller Hub.',
 };
 
 function mapEbayError(code: number, rawMessage: string): string {
@@ -287,23 +288,30 @@ export async function publishListing(
   const parsed = await parseStringPromise(response.data, { explicitArray: false });
   const result = parsed.AddItemResponse;
 
-  if (result.Ack === 'Failure' || (result.Ack !== 'Success' && result.Ack !== 'Warning')) {
-    const errors = result.Errors
-      ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors])
-      : [];
-    const firstError = errors[0];
+  const itemId = result.ItemID;
+
+  // Collect any errors/warnings for logging
+  const allErrors = result.Errors
+    ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors])
+    : [];
+
+  if (result.Ack === 'Warning' || (allErrors.length && result.Ack !== 'Failure')) {
+    console.warn('[eBay] Publish warnings:', allErrors.map((w: { ShortMessage?: string; ErrorCode?: string }) => `[${w.ErrorCode}] ${w.ShortMessage}`));
+  }
+
+  // If eBay returned an ItemID, the listing was created — treat as success even if Ack is
+  // non-standard (e.g. deprecation warnings eBay now surfaces as "Failure" for some categories)
+  if (!itemId && (result.Ack === 'Failure' || (result.Ack !== 'Success' && result.Ack !== 'Warning'))) {
+    const firstError = allErrors[0];
     const code = parseInt(firstError?.ErrorCode ?? '0', 10);
     const rawMessage = firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown eBay error';
-    console.error('[eBay] Publish failed:', { ack: result.Ack, code, rawMessage, errors });
+    console.error('[eBay] Publish failed:', { ack: result.Ack, code, rawMessage, errors: allErrors });
     throw new Error(mapEbayError(code, rawMessage));
   }
 
-  if (result.Ack === 'Warning' && result.Errors) {
-    const warnings = Array.isArray(result.Errors) ? result.Errors : [result.Errors];
-    console.warn('[eBay] Publish warnings:', warnings.map((w: { ShortMessage?: string }) => w.ShortMessage));
+  if (itemId && result.Ack !== 'Success') {
+    console.warn(`[eBay] Listing created (${itemId}) but Ack was "${result.Ack}" — treating as success`);
   }
-
-  const itemId = result.ItemID;
   console.log(`[eBay] ✓ Published item ${itemId} (${isSandbox ? 'SANDBOX' : 'PRODUCTION'})`);
   const listingUrl = isSandbox
     ? `https://sandbox.ebay.com/itm/${itemId}`
