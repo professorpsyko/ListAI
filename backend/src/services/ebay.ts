@@ -24,6 +24,7 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916145: 'Description is required. Please add a description to your listing.',
   21916076: 'Invalid condition for this category.',
   21916110: 'Quantity must be at least 1.',
+  10009: 'Item location is required. Please try again.',
   931: 'Your eBay auth token has expired or is invalid. Generate a new User Token at developer.ebay.com → My Account → User Tokens, then update EBAY_AUTH_TOKEN in your Railway environment variables.',
   932: 'Your eBay auth token has expired. Please generate a new one at developer.ebay.com and update EBAY_AUTH_TOKEN in Railway.',
   21916984: 'IAF (OAuth) token is invalid or expired. Go to developer.ebay.com, generate a fresh User Access Token, and update EBAY_AUTH_TOKEN in Railway.',
@@ -146,6 +147,7 @@ export async function publishListing(data: ListingData, overrideToken?: string):
     <StartPrice>${data.listingType === 'AUCTION' ? (data.startingBid ?? 0.99) : data.price}</StartPrice>
     ${listingTypeXml}
     <Country>US</Country>
+    <Location>United States</Location>
     <Currency>USD</Currency>
     <DispatchTimeMax>3</DispatchTimeMax>
     <ShippingDetails>
