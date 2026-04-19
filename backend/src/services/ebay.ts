@@ -40,7 +40,7 @@ const EBAY_ERROR_MAP: Record<number, string> = {
   21916608: 'Reserve price must be higher than the start price.',
   21916178: 'Scheduled listing time is in the past.',
   21919456: 'Business policies error — could not load your eBay shipping/return policies. Please try again.',
-  21920370: 'eBay deprecation warning for item aspects — listing may have been created. Check your eBay Seller Hub.',
+  21920370: 'eBay requires ConditionDescriptors for this category — please try publishing again.',
 };
 
 function mapEbayError(code: number, rawMessage: string): string {
@@ -92,6 +92,102 @@ const SHIPPING_SERVICE_MAP: Record<string, string> = {
   'Local pickup only': 'LocalPickup',
   'Free shipping (I\'ll build it into the price)': 'USPSPriority',
 };
+
+// ─── Condition Descriptors ────────────────────────────────────────────────────
+
+interface ConditionDescriptor {
+  descriptorId: string;
+  /** All allowed values for this descriptor (e.g. "Not Applicable", "Mint", etc.) */
+  allowedValues: string[];
+}
+
+/**
+ * Call GetCategoryFeatures to find out if a category requires ConditionDescriptors,
+ * and return the descriptor IDs with their "Not Applicable" (or first available) value.
+ *
+ * This fixes eBay error 21920370 which fires for shoe/collectible categories that have
+ * moved from legacy Grade/Certification ItemSpecifics to the new ConditionDescriptors system.
+ */
+async function getConditionDescriptors(
+  categoryId: string,
+  token: string,
+  isLegacyToken: boolean,
+): Promise<ConditionDescriptor[]> {
+  const reqXml = `<?xml version="1.0" encoding="utf-8"?>
+<GetCategoryFeaturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    ${isLegacyToken ? `<eBayAuthToken>${token}</eBayAuthToken>` : ''}
+  </RequesterCredentials>
+  <CategoryID>${categoryId}</CategoryID>
+  <FeatureID>ConditionDescriptors</FeatureID>
+  <DetailLevel>ReturnAll</DetailLevel>
+  <ViewAllNodes>true</ViewAllNodes>
+</GetCategoryFeaturesRequest>`;
+
+  const response = await axios.post(getApiUrl(), reqXml, {
+    headers: {
+      'X-EBAY-API-SITEID': '0',
+      'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+      'X-EBAY-API-CALL-NAME': 'GetCategoryFeatures',
+      'X-EBAY-API-APP-NAME': config.EBAY_APP_ID,
+      'X-EBAY-API-DEV-NAME': config.EBAY_DEV_ID,
+      'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
+      'Content-Type': 'text/xml',
+      ...(!isLegacyToken && { 'Authorization': `Bearer ${token}` }),
+    },
+    timeout: 15000,
+  });
+
+  const parsed = await parseStringPromise(response.data, { explicitArray: false });
+  const cats = parsed?.GetCategoryFeaturesResponse?.Category;
+  if (!cats) return [];
+
+  const catArray = Array.isArray(cats) ? cats : [cats];
+  const catFeatures = catArray.find((c: { CategoryID?: string }) => c.CategoryID === categoryId) ?? catArray[0];
+  if (!catFeatures) return [];
+
+  const rawDescriptors = catFeatures?.ConditionDescriptors?.Descriptor;
+  if (!rawDescriptors) return [];
+
+  const descriptorArray = Array.isArray(rawDescriptors) ? rawDescriptors : [rawDescriptors];
+  const result: ConditionDescriptor[] = [];
+
+  for (const d of descriptorArray) {
+    const id = d.ID;
+    if (!id) continue;
+
+    const rawValues = d.SupportedValues?.Value ?? [];
+    const valArray: string[] = Array.isArray(rawValues) ? rawValues : [rawValues];
+
+    // Prefer "Not Applicable" so we don't assert a grade we don't have
+    const notApplicable = valArray.find((v: string) => /not.?applicable/i.test(v));
+    const chosenValue = notApplicable ?? valArray[0];
+
+    if (chosenValue) {
+      result.push({ descriptorId: String(id), allowedValues: valArray });
+      // Store the chosen value alongside for XML generation
+      (result[result.length - 1] as ConditionDescriptor & { chosenValue: string }).chosenValue = chosenValue;
+    }
+  }
+
+  console.log(`[eBay] ConditionDescriptors for category ${categoryId}:`, result.map(d => d.descriptorId));
+  return result;
+}
+
+function buildConditionDescriptorsXml(descriptors: Array<ConditionDescriptor & { chosenValue?: string }>): string {
+  if (!descriptors || descriptors.length === 0) return '';
+  const items = descriptors
+    .filter(d => d.chosenValue)
+    .map(d => `    <Descriptor>
+        <ID>${escapeXml(d.descriptorId)}</ID>
+        <Values>
+          <Value>${escapeXml(d.chosenValue!)}</Value>
+        </Values>
+      </Descriptor>`)
+    .join('\n');
+  if (!items) return '';
+  return `<ConditionDescriptors>\n${items}\n    </ConditionDescriptors>`;
+}
 
 // ─── Business Policies ────────────────────────────────────────────────────────
 
@@ -204,6 +300,15 @@ export async function publishListing(
     title: data.title.slice(0, 40),
   });
 
+  // Fetch ConditionDescriptors for this category (fixes error 21920370 for shoe/collectible categories).
+  // If the category doesn't require them, this returns [] and we skip the XML block.
+  let conditionDescriptors: Array<ConditionDescriptor & { chosenValue?: string }> = [];
+  try {
+    conditionDescriptors = await getConditionDescriptors(resolvedCategoryId, token, isLegacyToken) as Array<ConditionDescriptor & { chosenValue?: string }>;
+  } catch (err) {
+    console.warn('[eBay] Could not fetch ConditionDescriptors (non-fatal):', (err as Error).message);
+  }
+
   const pictureDetails = data.imageUrls
     .slice(0, 12) // eBay max 12 photos free
     .map((url) => `<PictureURL>${url}</PictureURL>`)
@@ -280,6 +385,7 @@ export async function publishListing(
     ${legacyReturnsXml}
     ${sellerProfilesXml}
     ${buildItemSpecificsXml(data.itemAspects)}
+    ${buildConditionDescriptorsXml(conditionDescriptors)}
   </Item>
 </AddItemRequest>`;
 
