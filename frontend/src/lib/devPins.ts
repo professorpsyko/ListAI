@@ -9,12 +9,13 @@ export interface DevPinData {
     itemPhotoMetas: Array<{ name: string; size: number; lastModified?: number }>;
   };
   2?: { identification: IdentificationResult };
-  3?: { condition: string; color: string; specialNotes: string };
-  4?: { pricingResearch: PricingResult; suggestedPrice: string };
-  5?: { itemTitle: string };
-  6?: { itemDescription: string };
-  7?: { shippingService: string; shippingCost: string; handlingTime: string; acceptReturns: boolean; returnWindow: number };
-  8?: Record<string, never>; // Preview step — nothing to pin
+  3?: { ebayCategoryId: string; ebayCategoryName: string | null; itemAspects: Record<string, string> };
+  4?: { condition: string; color: string; specialNotes: string };
+  5?: { pricingResearch: PricingResult; suggestedPrice: string };
+  6?: { itemTitle: string };
+  7?: { itemDescription: string };
+  8?: { shippingService: string; shippingCost: string; handlingTime: string; acceptReturns: boolean; returnWindow: number };
+  9?: Record<string, never>; // Preview step — nothing to pin
 }
 
 const PIN_KEY = 'listsamurai-dev-pins';
