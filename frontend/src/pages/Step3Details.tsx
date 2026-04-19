@@ -2,7 +2,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { updateListing } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
-import clsx from 'clsx';
 
 const CONDITIONS = [
   'New',
@@ -13,11 +12,6 @@ const CONDITIONS = [
   'Used — good',
   'Used — acceptable',
   'For parts or not working',
-];
-
-const COLOR_CHIPS = [
-  'Black', 'White', 'Silver', 'Gray', 'Red', 'Blue', 'Green',
-  'Yellow', 'Gold', 'Brown', 'Pink', 'Purple', 'Orange', 'Multi',
 ];
 
 export default function Step3Details() {
@@ -33,7 +27,6 @@ export default function Step3Details() {
     if (!id || !canProceed) return;
     await updateListing(id, {
       itemCondition: store.condition,
-      itemColor: store.color,
       specialNotes: store.specialNotes,
     });
     store.setCurrentStep(5);
@@ -62,34 +55,6 @@ export default function Step3Details() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-      </div>
-
-      {/* Color */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Color</label>
-        <input
-          type="text"
-          value={store.color}
-          onChange={(e) => store.setColor(e.target.value)}
-          placeholder="e.g. Space Gray"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
-        />
-        <div className="flex flex-wrap gap-2">
-          {COLOR_CHIPS.map((c) => (
-            <button
-              key={c}
-              onClick={() => store.setColor(c)}
-              className={clsx(
-                'px-3 py-1 rounded-full text-sm border transition-colors',
-                store.color === c
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600',
-              )}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Special notes */}
