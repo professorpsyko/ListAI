@@ -192,6 +192,13 @@ export async function publishListing(
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
 
+  console.log('[eBay] Listing details:', {
+    category: data.category,
+    categoryId: data.categoryId,
+    conditionId,
+    title: data.title.slice(0, 40),
+  });
+
   const pictureDetails = data.imageUrls
     .slice(0, 12) // eBay max 12 photos free
     .map((url) => `<PictureURL>${url}</PictureURL>`)
@@ -267,6 +274,12 @@ export async function publishListing(
     </PictureDetails>
     ${legacyReturnsXml}
     ${sellerProfilesXml}
+    <ItemSpecifics>
+      <NameValueList>
+        <Name>Graded</Name>
+        <Value>No</Value>
+      </NameValueList>
+    </ItemSpecifics>
   </Item>
 </AddItemRequest>`;
 
@@ -285,6 +298,7 @@ export async function publishListing(
     timeout: 30000,
   });
 
+  console.log('[eBay] Raw response (first 1000 chars):', String(response.data).slice(0, 1000));
   const parsed = await parseStringPromise(response.data, { explicitArray: false });
   const result = parsed.AddItemResponse;
 
