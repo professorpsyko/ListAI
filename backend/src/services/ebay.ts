@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { parseStringPromise } from 'xml2js';
 import { config } from '../config';
+import { getAppToken } from './ebay-app-token';
 
 const SANDBOX_URL = 'https://api.sandbox.ebay.com/ws/api.dll';
 const PRODUCTION_URL = 'https://api.ebay.com/ws/api.dll';
@@ -102,75 +103,65 @@ interface ConditionDescriptor {
 }
 
 /**
- * Call GetCategoryFeatures to find out if a category requires ConditionDescriptors,
- * and return the descriptor IDs with their "Not Applicable" (or first available) value.
+ * Call the eBay Sell Metadata REST API to get ConditionDescriptors for a category.
+ * Uses an app-level token (no user auth needed — this is catalog data).
  *
  * This fixes eBay error 21920370 which fires for shoe/collectible categories that have
  * moved from legacy Grade/Certification ItemSpecifics to the new ConditionDescriptors system.
+ * We always pick "Not Applicable" (or the first available value) so we don't claim a grade.
  */
 async function getConditionDescriptors(
   categoryId: string,
-  token: string,
-  isLegacyToken: boolean,
 ): Promise<ConditionDescriptor[]> {
-  const reqXml = `<?xml version="1.0" encoding="utf-8"?>
-<GetCategoryFeaturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <RequesterCredentials>
-    ${isLegacyToken ? `<eBayAuthToken>${token}</eBayAuthToken>` : ''}
-  </RequesterCredentials>
-  <CategoryID>${categoryId}</CategoryID>
-  <FeatureID>ConditionDescriptors</FeatureID>
-  <DetailLevel>ReturnAll</DetailLevel>
-  <ViewAllNodes>true</ViewAllNodes>
-</GetCategoryFeaturesRequest>`;
+  const appToken = await getAppToken();
+  const base = getRestBase();
 
-  const response = await axios.post(getApiUrl(), reqXml, {
-    headers: {
-      'X-EBAY-API-SITEID': '0',
-      'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
-      'X-EBAY-API-CALL-NAME': 'GetCategoryFeatures',
-      'X-EBAY-API-APP-NAME': config.EBAY_APP_ID,
-      'X-EBAY-API-DEV-NAME': config.EBAY_DEV_ID,
-      'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
-      'Content-Type': 'text/xml',
-      ...(!isLegacyToken && { 'Authorization': `Bearer ${token}` }),
+  const response = await axios.get(
+    `${base}/sell/metadata/v1/marketplace/EBAY_US/get_condition_descriptors`,
+    {
+      params: { category_id: categoryId, aspect_filter: 'ALL_APPLICABLE' },
+      headers: {
+        Authorization: `Bearer ${appToken}`,
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        Accept: 'application/json',
+      },
+      timeout: 15000,
     },
-    timeout: 15000,
-  });
+  );
 
-  const parsed = await parseStringPromise(response.data, { explicitArray: false });
-  const cats = parsed?.GetCategoryFeaturesResponse?.Category;
-  if (!cats) return [];
+  const rawDescriptors: Array<{
+    conditionDescriptorId: number;
+    name: string;
+    values: Array<{ conditionDescriptorValueId: number; name: string }>;
+  }> = response.data?.conditionDescriptors ?? [];
 
-  const catArray = Array.isArray(cats) ? cats : [cats];
-  const catFeatures = catArray.find((c: { CategoryID?: string }) => c.CategoryID === categoryId) ?? catArray[0];
-  if (!catFeatures) return [];
+  if (!rawDescriptors.length) {
+    console.log(`[eBay] No ConditionDescriptors for category ${categoryId} — skipping`);
+    return [];
+  }
 
-  const rawDescriptors = catFeatures?.ConditionDescriptors?.Descriptor;
-  if (!rawDescriptors) return [];
+  const result: Array<ConditionDescriptor & { chosenValue: string }> = [];
+  for (const d of rawDescriptors) {
+    const valNames = d.values?.map((v) => v.name) ?? [];
+    // Prefer "Not Applicable" so we don't assert any grade we don't have
+    const chosen =
+      valNames.find((n) => /not.?applicable/i.test(n)) ??
+      valNames.find((n) => /not.?graded/i.test(n)) ??
+      valNames[0];
 
-  const descriptorArray = Array.isArray(rawDescriptors) ? rawDescriptors : [rawDescriptors];
-  const result: ConditionDescriptor[] = [];
-
-  for (const d of descriptorArray) {
-    const id = d.ID;
-    if (!id) continue;
-
-    const rawValues = d.SupportedValues?.Value ?? [];
-    const valArray: string[] = Array.isArray(rawValues) ? rawValues : [rawValues];
-
-    // Prefer "Not Applicable" so we don't assert a grade we don't have
-    const notApplicable = valArray.find((v: string) => /not.?applicable/i.test(v));
-    const chosenValue = notApplicable ?? valArray[0];
-
-    if (chosenValue) {
-      result.push({ descriptorId: String(id), allowedValues: valArray });
-      // Store the chosen value alongside for XML generation
-      (result[result.length - 1] as ConditionDescriptor & { chosenValue: string }).chosenValue = chosenValue;
+    if (chosen) {
+      result.push({
+        descriptorId: String(d.conditionDescriptorId),
+        allowedValues: valNames,
+        chosenValue: chosen,
+      });
     }
   }
 
-  console.log(`[eBay] ConditionDescriptors for category ${categoryId}:`, result.map(d => d.descriptorId));
+  console.log(
+    `[eBay] ConditionDescriptors for category ${categoryId}:`,
+    result.map((d) => `${d.descriptorId}="${d.chosenValue}"`),
+  );
   return result;
 }
 
@@ -304,7 +295,7 @@ export async function publishListing(
   // If the category doesn't require them, this returns [] and we skip the XML block.
   let conditionDescriptors: Array<ConditionDescriptor & { chosenValue?: string }> = [];
   try {
-    conditionDescriptors = await getConditionDescriptors(resolvedCategoryId, token, isLegacyToken) as Array<ConditionDescriptor & { chosenValue?: string }>;
+    conditionDescriptors = await getConditionDescriptors(resolvedCategoryId) as Array<ConditionDescriptor & { chosenValue?: string }>;
   } catch (err) {
     console.warn('[eBay] Could not fetch ConditionDescriptors (non-fatal):', (err as Error).message);
   }
@@ -440,6 +431,13 @@ export async function publishListing(
   return { ebayItemId: itemId, listingUrl };
 }
 
+// These ItemSpecifics names are deprecated in favour of ConditionDescriptors.
+// Sending them causes error 21920370. Strip them before building the XML.
+const DEPRECATED_ASPECTS = new Set([
+  'Grade', 'Graded', 'Certification', 'Grading Company',
+  'PSA Grade', 'BGS Grade', 'CGC Grade', 'SGC Grade',
+]);
+
 /**
  * Builds the <ItemSpecifics> XML block from a key/value map.
  * Each value may be a single string or an array of strings.
@@ -449,6 +447,7 @@ function buildItemSpecificsXml(aspects?: Record<string, string | string[]>): str
   if (!aspects || Object.keys(aspects).length === 0) return '';
 
   const nameValueLists = Object.entries(aspects)
+    .filter(([name]) => !DEPRECATED_ASPECTS.has(name))
     .filter(([, v]) => {
       const vals = Array.isArray(v) ? v : [v];
       return vals.some((s) => s && s.trim());
