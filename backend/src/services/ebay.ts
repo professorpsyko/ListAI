@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { parseStringPromise } from 'xml2js';
 import { config } from '../config';
-import { getAppToken } from './ebay-app-token';
 
 const SANDBOX_URL = 'https://api.sandbox.ebay.com/ws/api.dll';
 const PRODUCTION_URL = 'https://api.ebay.com/ws/api.dll';
@@ -96,88 +95,48 @@ const SHIPPING_SERVICE_MAP: Record<string, string> = {
 
 // ─── Condition Descriptors ────────────────────────────────────────────────────
 
-interface ConditionDescriptor {
-  descriptorId: string;
-  /** All allowed values for this descriptor (e.g. "Not Applicable", "Mint", etc.) */
-  allowedValues: string[];
+/**
+ * Build a <ConditionDescriptors> XML block from an array of { id, value } pairs.
+ * Used in the retry path when eBay tells us which descriptor IDs are required.
+ */
+function buildConditionDescriptorsXml(descriptors: Array<{ id: string; value: string }>): string {
+  if (!descriptors || descriptors.length === 0) return '';
+  const items = descriptors
+    .map(
+      (d) => `    <Descriptor>
+        <ID>${escapeXml(d.id)}</ID>
+        <Values>
+          <Value>${escapeXml(d.value)}</Value>
+        </Values>
+      </Descriptor>`,
+    )
+    .join('\n');
+  return `<ConditionDescriptors>\n${items}\n    </ConditionDescriptors>`;
 }
 
 /**
- * Call the eBay Sell Metadata REST API to get ConditionDescriptors for a category.
- * Uses an app-level token (no user auth needed — this is catalog data).
+ * Extract required ConditionDescriptor IDs from a 21920370 error.
  *
- * This fixes eBay error 21920370 which fires for shoe/collectible categories that have
- * moved from legacy Grade/Certification ItemSpecifics to the new ConditionDescriptors system.
- * We always pick "Not Applicable" (or the first available value) so we don't claim a grade.
+ * eBay includes the required descriptor IDs in the <ErrorParameters> elements
+ * of the error. With xml2js (explicitArray:false) a single ErrorParameters
+ * element is an object; multiple are an array.
  */
-async function getConditionDescriptors(
-  categoryId: string,
-): Promise<ConditionDescriptor[]> {
-  const appToken = await getAppToken();
-  const base = getRestBase();
-
-  const response = await axios.get(
-    `${base}/sell/metadata/v1/marketplace/EBAY_US/get_condition_descriptors`,
-    {
-      params: { category_id: categoryId, aspect_filter: 'ALL_APPLICABLE' },
-      headers: {
-        Authorization: `Bearer ${appToken}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-        Accept: 'application/json',
-      },
-      timeout: 15000,
-    },
-  );
-
-  const rawDescriptors: Array<{
-    conditionDescriptorId: number;
-    name: string;
-    values: Array<{ conditionDescriptorValueId: number; name: string }>;
-  }> = response.data?.conditionDescriptors ?? [];
-
-  if (!rawDescriptors.length) {
-    console.log(`[eBay] No ConditionDescriptors for category ${categoryId} — skipping`);
-    return [];
-  }
-
-  const result: Array<ConditionDescriptor & { chosenValue: string }> = [];
-  for (const d of rawDescriptors) {
-    const valNames = d.values?.map((v) => v.name) ?? [];
-    // Prefer "Not Applicable" so we don't assert any grade we don't have
-    const chosen =
-      valNames.find((n) => /not.?applicable/i.test(n)) ??
-      valNames.find((n) => /not.?graded/i.test(n)) ??
-      valNames[0];
-
-    if (chosen) {
-      result.push({
-        descriptorId: String(d.conditionDescriptorId),
-        allowedValues: valNames,
-        chosenValue: chosen,
-      });
-    }
-  }
-
-  console.log(
-    `[eBay] ConditionDescriptors for category ${categoryId}:`,
-    result.map((d) => `${d.descriptorId}="${d.chosenValue}"`),
-  );
-  return result;
-}
-
-function buildConditionDescriptorsXml(descriptors: Array<ConditionDescriptor & { chosenValue?: string }>): string {
-  if (!descriptors || descriptors.length === 0) return '';
-  const items = descriptors
-    .filter(d => d.chosenValue)
-    .map(d => `    <Descriptor>
-        <ID>${escapeXml(d.descriptorId)}</ID>
-        <Values>
-          <Value>${escapeXml(d.chosenValue!)}</Value>
-        </Values>
-      </Descriptor>`)
-    .join('\n');
-  if (!items) return '';
-  return `<ConditionDescriptors>\n${items}\n    </ConditionDescriptors>`;
+function extractDescriptorIds(
+  error: Record<string, unknown>,
+): string[] {
+  const raw = error.ErrorParameters;
+  if (!raw) return [];
+  const params = Array.isArray(raw) ? raw : [raw];
+  return params
+    .map((p: unknown) => {
+      if (typeof p === 'object' && p !== null) {
+        // xml2js: { $: { ParamID: '0' }, Value: '27000' }  OR  { Value: '27000' }
+        const val = (p as Record<string, unknown>).Value;
+        return typeof val === 'string' ? val.trim() : '';
+      }
+      return '';
+    })
+    .filter(Boolean);
 }
 
 // ─── Business Policies ────────────────────────────────────────────────────────
@@ -291,15 +250,6 @@ export async function publishListing(
     title: data.title.slice(0, 40),
   });
 
-  // Fetch ConditionDescriptors for this category (fixes error 21920370 for shoe/collectible categories).
-  // If the category doesn't require them, this returns [] and we skip the XML block.
-  let conditionDescriptors: Array<ConditionDescriptor & { chosenValue?: string }> = [];
-  try {
-    conditionDescriptors = await getConditionDescriptors(resolvedCategoryId) as Array<ConditionDescriptor & { chosenValue?: string }>;
-  } catch (err) {
-    console.warn('[eBay] Could not fetch ConditionDescriptors (non-fatal):', (err as Error).message);
-  }
-
   const pictureDetails = data.imageUrls
     .slice(0, 12) // eBay max 12 photos free
     .map((url) => `<PictureURL>${url}</PictureURL>`)
@@ -351,7 +301,9 @@ export async function publishListing(
            </ReturnPolicy>`)
     : '';
 
-  const xml = `<?xml version="1.0" encoding="utf-8"?>
+  /** Fire an AddItem call and return the parsed response */
+  async function callAddItem(conditionDescriptorsXml: string) {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
     ${isLegacyToken ? `<eBayAuthToken>${token}</eBayAuthToken>` : ''}
@@ -376,46 +328,68 @@ export async function publishListing(
     ${legacyReturnsXml}
     ${sellerProfilesXml}
     ${buildItemSpecificsXml(data.itemAspects)}
-    ${buildConditionDescriptorsXml(conditionDescriptors)}
+    ${conditionDescriptorsXml}
   </Item>
 </AddItemRequest>`;
 
-  const response = await axios.post(getApiUrl(), xml, {
-    headers: {
-      'X-EBAY-API-SITEID': '0',
-      'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
-      'X-EBAY-API-CALL-NAME': 'AddItem',
-      'X-EBAY-API-APP-NAME': config.EBAY_APP_ID,
-      'X-EBAY-API-DEV-NAME': config.EBAY_DEV_ID,
-      'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
-      'Content-Type': 'text/xml',
-      // OAuth tokens go in the Authorization header; legacy tokens are in the XML body
-      ...(!isLegacyToken && { 'Authorization': `Bearer ${token}` }),
-    },
-    timeout: 30000,
-  });
+    const resp = await axios.post(getApiUrl(), xml, {
+      headers: {
+        'X-EBAY-API-SITEID': '0',
+        'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+        'X-EBAY-API-CALL-NAME': 'AddItem',
+        'X-EBAY-API-APP-NAME': config.EBAY_APP_ID,
+        'X-EBAY-API-DEV-NAME': config.EBAY_DEV_ID,
+        'X-EBAY-API-CERT-NAME': config.EBAY_CERT_ID,
+        'Content-Type': 'text/xml',
+        ...(!isLegacyToken && { 'Authorization': `Bearer ${token}` }),
+      },
+      timeout: 30000,
+    });
 
-  console.log('[eBay] Raw response (first 1000 chars):', String(response.data).slice(0, 1000));
-  const parsed = await parseStringPromise(response.data, { explicitArray: false });
-  const result = parsed.AddItemResponse;
+    console.log('[eBay] Raw response (first 2000 chars):', String(resp.data).slice(0, 2000));
+    const parsed = await parseStringPromise(resp.data, { explicitArray: false });
+    return parsed.AddItemResponse as Record<string, unknown>;
+  }
 
-  const itemId = result.ItemID;
-
-  // Collect any errors/warnings for logging
-  const allErrors = result.Errors
-    ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors])
+  // ── First attempt (no ConditionDescriptors) ─────────────────────────────────
+  let result = await callAddItem('');
+  let allErrors = result.Errors
+    ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors]) as Array<Record<string, unknown>>
     : [];
 
+  // ── If eBay requires ConditionDescriptors, extract IDs from the error and retry ──
+  const needs21920370 = allErrors.some((e) => String(e.ErrorCode) === '21920370');
+  if (needs21920370 && !result.ItemID) {
+    const descriptorError = allErrors.find((e) => String(e.ErrorCode) === '21920370')!;
+    const descriptorIds = extractDescriptorIds(descriptorError);
+    console.log('[eBay] 21920370: extracted required descriptor IDs:', descriptorIds);
+
+    // If eBay didn't put IDs in ErrorParameters, fall back to common known IDs for
+    // shoe/collectible grading programs (covers most cases).
+    const idsToUse = descriptorIds.length > 0 ? descriptorIds : ['27000', '27001'];
+
+    const descriptors = idsToUse.map((id) => ({ id, value: 'Not Applicable' }));
+    const condDescXml = buildConditionDescriptorsXml(descriptors);
+    console.log('[eBay] Retrying with ConditionDescriptors:', descriptors);
+
+    result = await callAddItem(condDescXml);
+    allErrors = result.Errors
+      ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors]) as Array<Record<string, unknown>>
+      : [];
+  }
+
+  const itemId = result.ItemID as string | undefined;
+
   if (result.Ack === 'Warning' || (allErrors.length && result.Ack !== 'Failure')) {
-    console.warn('[eBay] Publish warnings:', allErrors.map((w: { ShortMessage?: string; ErrorCode?: string }) => `[${w.ErrorCode}] ${w.ShortMessage}`));
+    console.warn('[eBay] Publish warnings:', allErrors.map((w) => `[${w.ErrorCode}] ${w.ShortMessage}`));
   }
 
   // If eBay returned an ItemID, the listing was created — treat as success even if Ack is
   // non-standard (e.g. deprecation warnings eBay now surfaces as "Failure" for some categories)
   if (!itemId && (result.Ack === 'Failure' || (result.Ack !== 'Success' && result.Ack !== 'Warning'))) {
     const firstError = allErrors[0];
-    const code = parseInt(firstError?.ErrorCode ?? '0', 10);
-    const rawMessage = firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown eBay error';
+    const code = parseInt(firstError?.ErrorCode as string ?? '0', 10);
+    const rawMessage = (firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown eBay error') as string;
     console.error('[eBay] Publish failed:', { ack: result.Ack, code, rawMessage, errors: allErrors });
     throw new Error(mapEbayError(code, rawMessage));
   }
@@ -428,7 +402,7 @@ export async function publishListing(
     ? `https://sandbox.ebay.com/itm/${itemId}`
     : `https://www.ebay.com/itm/${itemId}`;
 
-  return { ebayItemId: itemId, listingUrl };
+  return { ebayItemId: itemId!, listingUrl };
 }
 
 // These ItemSpecifics names are deprecated in favour of ConditionDescriptors.
