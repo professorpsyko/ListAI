@@ -325,8 +325,8 @@ export default function Step9Photos() {
     const nonLabel = orderedPhotos.filter((u) => u !== labelUrl);
     store.setProcessedPhotos(nonLabel);
 
-    store.setCurrentStep(10);
-    navigate(`/listing/${id}/step/10`);
+    store.setCurrentStep(9);
+    navigate(`/listing/${id}/step/9`);
   }
 
   return (

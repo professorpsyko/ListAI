@@ -15,12 +15,11 @@ const STEPS = [
   { n: 2, label: 'Identify' },
   { n: 3, label: 'Aspects' },
   { n: 4, label: 'Details' },
-  { n: 5, label: 'Price' },
+  { n: 5, label: 'Price & Ship' },
   { n: 6, label: 'Title' },
   { n: 7, label: 'Description' },
-  { n: 8, label: 'Shipping' },
-  { n: 9, label: 'Photos' },
-  { n: 10, label: 'Preview' },
+  { n: 8, label: 'Photos' },
+  { n: 9, label: 'Preview' },
 ];
 
 // Which fields mark a step as complete
@@ -30,11 +29,10 @@ function isStepComplete(step: number, s: ReturnType<typeof useListingStore.getSt
     case 2: return !!s.identification?.identification;
     case 3: return s.aspectsConfirmed;
     case 4: return !!s.condition;
-    case 5: return !!s.finalPrice;
+    case 5: return (!!s.finalPrice || !!s.startingBid) && !!s.shippingService;
     case 6: return !!s.itemTitle;
     case 7: return !!s.itemDescription;
-    case 8: return !!s.shippingService;
-    case 9: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
+    case 8: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
     default: return false;
   }
 }

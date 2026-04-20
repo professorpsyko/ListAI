@@ -413,25 +413,29 @@ export default function Step8Preview() {
 
   // ── Photos DnD ─────────────────────────────────────────────────────────────
   const [showOriginal, setShowOriginal] = useState(false);
-  const basePhotos = showOriginal
-    ? store.itemPhotoUrls
-    : (store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls);
   const labelUrl = store.labelPhotoUrl;
 
-  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
-    labelUrl ? [...basePhotos, labelUrl] : basePhotos,
-  );
+  // processedPhotoUrls[0] is the label's processed version (label uploaded first).
+  // Strip it by taking only the last itemPhotoUrls.length entries.
+  function getItemPhotos(processed: string[], originals: string[]): string[] {
+    if (!processed.length) return originals;
+    const expected = originals.length;
+    return processed.length > expected
+      ? processed.slice(processed.length - expected)
+      : processed;
+  }
 
-  // Re-sync if processed photos arrive after mount.
-  // Always deduplicate label URL before appending — it may have been saved into
-  // processedImageUrls by a previous publish attempt, which would cause it to
-  // appear twice if we blindly append it again.
+  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() => {
+    const base = getItemPhotos(store.processedPhotoUrls, store.itemPhotoUrls);
+    return labelUrl ? [...base, labelUrl] : base;
+  });
+
+  // Re-sync when processed photos arrive after mount.
   useEffect(() => {
-    const fresh = showOriginal
+    const base = showOriginal
       ? store.itemPhotoUrls
-      : (store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls);
-    const withoutLabel = labelUrl ? fresh.filter((u) => u !== labelUrl) : fresh;
-    const withLabel = labelUrl ? [...withoutLabel, labelUrl] : withoutLabel;
+      : getItemPhotos(store.processedPhotoUrls, store.itemPhotoUrls);
+    const withLabel = labelUrl ? [...base, labelUrl] : base;
     setOrderedPhotos(withLabel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.processedPhotoUrls.length, showOriginal]);
@@ -810,34 +814,39 @@ export default function Step8Preview() {
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Listing type</p>
             <div className="flex gap-3">
-              {(['BUY_IT_NOW', 'AUCTION'] as const).map((t) => (
+              {([
+                { v: 'BUY_IT_NOW', label: 'Buy It Now' },
+                { v: 'AUCTION', label: 'Auction' },
+                { v: 'AUCTION_BIN', label: 'Auction + BIN' },
+              ] as const).map(({ v, label }) => (
                 <button
-                  key={t}
-                  onClick={() => store.setListingType(t)}
+                  key={v}
+                  onClick={() => store.setListingType(v)}
                   className={clsx(
                     'px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
-                    store.listingType === t
+                    store.listingType === v
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'border-gray-300 text-gray-600 hover:border-blue-400',
                   )}
                 >
-                  {t === 'BUY_IT_NOW' ? 'Buy it now' : 'Auction'}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
-          {store.listingType === 'BUY_IT_NOW' ? (
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Price</p>
-              <div className="relative w-40">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                <input type="number" value={store.finalPrice} onChange={(e) => store.setFinalPrice(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+          <div className="grid grid-cols-2 gap-4">
+            {(store.listingType === 'BUY_IT_NOW' || store.listingType === 'AUCTION_BIN') && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Buy It Now price</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input type="number" value={store.finalPrice} onChange={(e) => store.setFinalPrice(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
+            )}
+            {(store.listingType === 'AUCTION' || store.listingType === 'AUCTION_BIN') && (
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Starting bid</p>
                 <div className="relative">
@@ -846,6 +855,8 @@ export default function Step8Preview() {
                     className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
+            )}
+            {(store.listingType === 'AUCTION' || store.listingType === 'AUCTION_BIN') && (
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Duration</p>
                 <select value={store.auctionDuration} onChange={(e) => store.setAuctionDuration(Number(e.target.value))}
@@ -853,8 +864,8 @@ export default function Step8Preview() {
                   {[1, 3, 5, 7, 10].map((d) => <option key={d} value={d}>{d} days</option>)}
                 </select>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <hr className="border-gray-100" />
 
