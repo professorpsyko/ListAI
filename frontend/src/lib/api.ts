@@ -51,10 +51,13 @@ export const editPhoto = (id: string, dataUrl: string) =>
 export const reprocessPhotos = (id: string) =>
   api.post(`/listings/${id}/photos/reprocess`).then((r) => r.data);
 
-export const uploadPhotos = (id: string, files: File[]) => {
+export const uploadPhotos = (id: string, files: File[], options?: { isLabel?: boolean }) => {
   const form = new FormData();
   files.forEach((f) => form.append('photos', f));
-  return api.post(`/listings/${id}/photos`, form).then((r) => r.data);
+  const url = options?.isLabel
+    ? `/listings/${id}/photos?label=true`
+    : `/listings/${id}/photos`;
+  return api.post(url, form).then((r) => r.data);
 };
 
 export const identifyItem = (id: string) =>

@@ -233,14 +233,11 @@ export default function Step9Photos() {
   const labelUrl = store.labelPhotoUrl;
 
   function buildOrderedPhotos(itemUrls: string[], processedUrls: string[]): string[] {
+    // processedUrls contains ONLY processed item photos — the label is never sent through
+    // background processing (it's uploaded with ?label=true and skips the Cloudinary pipeline).
+    // So the arrays are already in sync: processedUrls[i] is the processed version of itemUrls[i].
     if (!showOriginal && hasProcessed && processedUrls.length) {
-      // processedUrls[0] is the label's processed version (label uploaded first, processed first).
-      // We only want processed versions of the item photos — take the last itemUrls.length entries.
-      const expected = itemUrls.length;
-      const itemProcessed = processedUrls.length > expected
-        ? processedUrls.slice(processedUrls.length - expected)
-        : processedUrls;
-      return labelUrl ? [...itemProcessed, labelUrl] : itemProcessed;
+      return labelUrl ? [...processedUrls, labelUrl] : processedUrls;
     }
     return labelUrl ? [...itemUrls, labelUrl] : itemUrls;
   }

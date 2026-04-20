@@ -48,19 +48,21 @@ export async function uploadToCloudinary(input: string | Buffer): Promise<{ url:
 
 export async function processImage(publicId: string): Promise<ProcessedImage> {
   // Transformation pipeline:
-  //  1. Trim any solid-colour borders so the subject fills the frame
-  //  2. Auto-enhance colour balance, brightness & contrast (like iPhone magic wand)
-  //  3. Pad to a 1600×1600 square with pure-white background, AI-centred subject
+  //  1. Trim near-white/solid-colour borders (fuzz 15 handles off-white backgrounds)
+  //  2. Auto-enhance colour, brightness & contrast
+  //  3. Pad to 1600×1600 square, pure-white background, subject centred
+  //     gravity:'center' is correct for pad — it places the trimmed content dead-centre
+  //     rather than 'auto' which is designed for crop (not pad) and can shift the subject
   const transformation = [
-    { effect: 'trim' },
+    { effect: 'trim:15' },
     { effect: 'improve' },
     {
       width: 1600,
       height: 1600,
       crop: 'pad',
-      gravity: 'auto',
+      gravity: 'center',
       background: 'white',
-      quality: 85,
+      quality: 90,
       fetch_format: 'jpg',
     },
   ];

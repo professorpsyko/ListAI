@@ -235,11 +235,11 @@ function ListingCard({ listingId, listingNumber, collapsed, onToggle, isFirst, o
     }, UPLOAD_TIMEOUT_MS);
 
     try {
-      const result = await uploadPhotos(listingId, [files[0]]);
+      const result = await uploadPhotos(listingId, [files[0]], { isLabel: true });
       clearTimeout(timeout);
       const newLabelUrl = result.urls[0];
       applyLabelPhoto(newLabelUrl, labelMetaNew);
-      if (isFirst) store.setImageJobStatus('QUEUED');
+      // Don't set imageJobStatus for label — it's never processed, only item photos are
 
       // Reverse-dupe: label was already in items
       const dupeIndexes = itemMetas.reduce<number[]>((acc, m, i) => {

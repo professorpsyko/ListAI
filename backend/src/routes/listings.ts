@@ -127,46 +127,57 @@ router.post(
     const newPublicIds = uploadResults.map((r) => r.publicId);
 
     const listingId = req.params.id;
+    // ?label=true means this is the serial/tag photo — store as-is, never background-process it
+    const isLabel = req.query.label === 'true';
 
-    // Append new URLs to the DB and mark as PROCESSING immediately
+    // Append new URLs to the DB
     await prisma.listing.update({
       where: { id: listingId },
-      data: { imageUrls: [...listing.imageUrls, ...newUrls], imageJobStatus: 'PROCESSING' },
+      data: {
+        imageUrls: [...listing.imageUrls, ...newUrls],
+        // Only flip the job status to PROCESSING for item photos, not the label
+        ...(!isLabel ? { imageJobStatus: 'PROCESSING' } : {}),
+      },
     });
 
-    // Fire-and-forget: process images in the background without Redis/BullMQ
-    setImmediate(async () => {
-      try {
-        console.log(`[upload] Processing ${newPublicIds.length} image(s) for listing ${listingId}`);
-        const { processMultipleImages } = await import('../services/image');
-        const results = await processMultipleImages(newPublicIds);
-        const newProcessedUrls = results.map((r) => r.processedUrl);
-        const failedCount = results.filter((r) => r.failed).length;
+    if (isLabel) {
+      // Label photos are never background-processed — they go into imageUrls only.
+      // processedImageUrls stays untouched so the frontend array ordering stays clean.
+      console.log(`[upload] Label photo stored as-is for listing ${listingId} (no processing)`);
+    } else {
+      // Fire-and-forget: background-remove and centre item photos
+      setImmediate(async () => {
+        try {
+          console.log(`[upload] Processing ${newPublicIds.length} item image(s) for listing ${listingId}`);
+          const { processMultipleImages } = await import('../services/image');
+          const results = await processMultipleImages(newPublicIds);
+          const newProcessedUrls = results.map((r) => r.processedUrl);
+          const failedCount = results.filter((r) => r.failed).length;
 
-        // Re-fetch listing to get current processedImageUrls before appending
-        // (avoids overwriting a previous batch processed in parallel)
-        const current = await prisma.listing.findUnique({
-          where: { id: listingId },
-          select: { processedImageUrls: true },
-        });
-        const merged = [...(current?.processedImageUrls ?? []), ...newProcessedUrls];
+          // Re-fetch to avoid overwriting a previous batch processed in parallel
+          const current = await prisma.listing.findUnique({
+            where: { id: listingId },
+            select: { processedImageUrls: true },
+          });
+          const merged = [...(current?.processedImageUrls ?? []), ...newProcessedUrls];
 
-        await prisma.listing.update({
-          where: { id: listingId },
-          data: {
-            processedImageUrls: merged,
-            imageJobStatus: failedCount === results.length ? 'FAILED' : 'COMPLETE',
-          },
-        });
-        console.log(`[upload] Image processing done for ${listingId}. ${failedCount} failed, ${results.length - failedCount} succeeded.`);
-      } catch (err) {
-        console.error(`[upload] Image processing failed for ${listingId}:`, (err as Error).message);
-        await prisma.listing.update({
-          where: { id: listingId },
-          data: { imageJobStatus: 'FAILED' },
-        }).catch(console.error);
-      }
-    });
+          await prisma.listing.update({
+            where: { id: listingId },
+            data: {
+              processedImageUrls: merged,
+              imageJobStatus: failedCount === results.length ? 'FAILED' : 'COMPLETE',
+            },
+          });
+          console.log(`[upload] Image processing done for ${listingId}. ${failedCount} failed, ${results.length - failedCount} succeeded.`);
+        } catch (err) {
+          console.error(`[upload] Image processing failed for ${listingId}:`, (err as Error).message);
+          await prisma.listing.update({
+            where: { id: listingId },
+            data: { imageJobStatus: 'FAILED' },
+          }).catch(console.error);
+        }
+      });
+    }
 
     console.log('[upload] Responding with URLs');
     // Return only the new URLs — the frontend appends these to its own list

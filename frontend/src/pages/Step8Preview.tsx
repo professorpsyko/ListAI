@@ -415,26 +415,18 @@ export default function Step8Preview() {
   const [showOriginal, setShowOriginal] = useState(false);
   const labelUrl = store.labelPhotoUrl;
 
-  // processedPhotoUrls[0] is the label's processed version (label uploaded first).
-  // Strip it by taking only the last itemPhotoUrls.length entries.
-  function getItemPhotos(processed: string[], originals: string[]): string[] {
-    if (!processed.length) return originals;
-    const expected = originals.length;
-    return processed.length > expected
-      ? processed.slice(processed.length - expected)
-      : processed;
-  }
-
+  // processedPhotoUrls contains ONLY processed item photos — the label is never background-processed
+  // (it's uploaded with ?label=true). So we can use processedPhotoUrls directly without any slicing.
   const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() => {
-    const base = getItemPhotos(store.processedPhotoUrls, store.itemPhotoUrls);
+    const base = store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls;
     return labelUrl ? [...base, labelUrl] : base;
   });
 
   // Re-sync when processed photos arrive after mount.
   useEffect(() => {
-    const base = showOriginal
+    const base = showOriginal || !store.processedPhotoUrls.length
       ? store.itemPhotoUrls
-      : getItemPhotos(store.processedPhotoUrls, store.itemPhotoUrls);
+      : store.processedPhotoUrls;
     const withLabel = labelUrl ? [...base, labelUrl] : base;
     setOrderedPhotos(withLabel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
