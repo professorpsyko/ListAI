@@ -128,8 +128,17 @@ export default function Step9Photos() {
 
   const [editingPhoto, setEditingPhoto] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const hasProcessed = store.processedPhotoUrls.length > 0;
-  const isProcessing = store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED';
+  const isProcessing = !processingTimedOut && (store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED');
+
+  // If processing takes more than 45 s, stop waiting and let the user proceed with originals
+  useEffect(() => {
+    if (!isProcessing || hasProcessed) return;
+    const t = setTimeout(() => setProcessingTimedOut(true), 45_000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.imageJobStatus]);
 
   // Build initial ordered list: processed (or original) + label at end
   const basePhotos = showOriginal || !hasProcessed
@@ -210,12 +219,24 @@ export default function Step9Photos() {
 
       {/* Processing banner */}
       {isProcessing && (
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
-          <svg className="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+          <svg className="w-4 h-4 animate-spin flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           <span>Background removal still in progress — photos will update automatically when ready.</span>
+        </div>
+      )}
+      {/* Timed-out banner */}
+      {processingTimedOut && !hasProcessed && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+          </svg>
+          <div>
+            <p className="font-medium">Photo processing is taking longer than expected.</p>
+            <p className="mt-0.5 text-amber-700">You can continue with your original photos — they'll work fine for your listing.</p>
+          </div>
         </div>
       )}
 

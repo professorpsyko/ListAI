@@ -194,12 +194,31 @@ router.get('/:id/job-status', requireAuth, async (req: Request, res: Response) =
       shippingSuggestion: true,
       itemAspects: true,
       ebayCategoryId: true,
+      updatedAt: true,
     },
   });
   if (!listing) {
     res.status(404).json({ error: 'Listing not found' });
     return;
   }
+
+  // Auto-resolve stale image jobs: if QUEUED/PROCESSING for >5 min, mark FAILED
+  const staleThresholdMs = 5 * 60 * 1000;
+  const isStaleImageJob =
+    ['QUEUED', 'PROCESSING'].includes(listing.imageJobStatus ?? '') &&
+    listing.updatedAt &&
+    Date.now() - listing.updatedAt.getTime() > staleThresholdMs;
+
+  if (isStaleImageJob) {
+    console.warn(`[job-status] Stale image job for listing ${req.params.id} — marking FAILED`);
+    await prisma.listing.update({
+      where: { id: req.params.id },
+      data: { imageJobStatus: 'FAILED' },
+    }).catch(console.error);
+    res.json({ ...listing, imageJobStatus: 'FAILED' });
+    return;
+  }
+
   res.json(listing);
 });
 
