@@ -107,6 +107,16 @@ export default function WizardLayout() {
             })}
           </nav>
 
+          {/* Batch progress pill */}
+          {store.batchTotalCount > 1 && (
+            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full flex-shrink-0">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0l-4-4m4 4l-4 4" />
+              </svg>
+              Item {store.batchTotalCount - store.batchListings.length} of {store.batchTotalCount}
+            </div>
+          )}
+
           {/* Settings + user */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <Link to="/settings" className="text-gray-500 hover:text-gray-700" title="Settings">

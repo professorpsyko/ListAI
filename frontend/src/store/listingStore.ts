@@ -32,6 +32,12 @@ export interface PricingResult {
   priceRange: { low: number; high: number };
 }
 
+export interface BatchListing {
+  id: string;
+  labelUrl: string;
+  itemUrls: string[];
+}
+
 export interface ListingState {
   // Listing ID (from backend)
   listingId: string | null;
@@ -97,6 +103,10 @@ export interface ListingState {
   // Current wizard step
   currentStep: number;
 
+  // Batch session — survives reset() so subsequent listings can be loaded
+  batchListings: BatchListing[];   // remaining listings still to process
+  batchTotalCount: number;         // total items in this batch (set once from step 1)
+
   // Actions
   setListingId: (id: string) => void;
   setLabelPhoto: (url: string, meta?: { name: string; size: number; lastModified?: number } | null) => void;
@@ -130,6 +140,9 @@ export interface ListingState {
   setStartingBid: (v: string) => void;
   setCurrentStep: (n: number) => void;
   reset: () => void;
+  setBatchListings: (v: BatchListing[]) => void;
+  setBatchTotalCount: (n: number) => void;
+  clearBatch: () => void;
 }
 
 const initialState = {
@@ -173,6 +186,9 @@ export const useListingStore = create<ListingState>()(
   persist(
     (set) => ({
       ...initialState,
+      // Batch state lives outside initialState so reset() doesn't wipe it
+      batchListings: [],
+      batchTotalCount: 0,
       setListingId: (id) => set({ listingId: id }),
       setLabelPhoto: (url, meta) => set({ labelPhotoUrl: url, labelPhotoMeta: meta ?? null }),
       setItemPhotos: (urls, metas) => set((s) => ({
@@ -207,7 +223,10 @@ export const useListingStore = create<ListingState>()(
       setAuctionDuration: (v) => set({ auctionDuration: v }),
       setStartingBid: (v) => set({ startingBid: v }),
       setCurrentStep: (n) => set({ currentStep: n }),
-      reset: () => set(initialState),
+      reset: () => set(initialState), // only resets wizard fields — batch survives
+      setBatchListings: (v) => set({ batchListings: v }),
+      setBatchTotalCount: (n) => set({ batchTotalCount: n }),
+      clearBatch: () => set({ batchListings: [], batchTotalCount: 0 }),
     }),
     { name: 'listai-listing' },
   ),

@@ -179,9 +179,11 @@ interface ListingCardProps {
   onToggle: () => void;
   /** First listing syncs its photos into the Zustand store so the wizard can use them */
   isFirst: boolean;
+  /** Called whenever photos change so the parent can track batch data */
+  onPhotosChange?: (labelUrl: string, itemUrls: string[]) => void;
 }
 
-function ListingCard({ listingId, listingNumber, collapsed, onToggle, isFirst }: ListingCardProps) {
+function ListingCard({ listingId, listingNumber, collapsed, onToggle, isFirst, onPhotosChange }: ListingCardProps) {
   const store = useListingStore();
 
   // For the first listing, seed from store so back-navigation works
@@ -204,17 +206,19 @@ function ListingCard({ listingId, listingNumber, collapsed, onToggle, isFirst }:
   const labelStatus = useUploadStatus(labelUploading, LABEL_STAGES);
   const itemsStatus = useUploadStatus(itemsUploading, ITEMS_STAGES);
 
-  // Sync helpers — update local state and optionally push to store
+  // Sync helpers — update local state, optionally push to store, always notify parent
   function applyLabelPhoto(url: string, meta: FileMeta | null) {
     setLabelUrlState(url);
     setLabelMetaState(meta);
     if (isFirst) store.setLabelPhoto(url, meta);
+    onPhotosChange?.(url, itemUrls);
   }
 
   function applyItemPhotos(urls: string[], metas: FileMeta[]) {
     setItemUrlsState(urls);
     setItemMetasState(metas);
     if (isFirst) store.setItemPhotos(urls, metas);
+    onPhotosChange?.(labelUrl, urls);
   }
 
   // ── Label upload ─────────────────────────────────────────────────────────
@@ -585,6 +589,9 @@ export default function Step1Photos() {
   const [addingListing, setAddingListing] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  // Track latest photo state for each card so we can build batch data on Next
+  const cardPhotosRef = useRef<Map<string, { labelUrl: string; itemUrls: string[] }>>(new Map());
+
   const canProceed = !!store.labelPhotoUrl && store.itemPhotoUrls.length >= 2;
   useStepAction('Next: Identify item \u2192', !canProceed, handleNext);
 
@@ -607,7 +614,26 @@ export default function Step1Photos() {
     setExpandedIndex((prev) => (prev === idx ? -1 : idx));
   }
 
+  function handlePhotosChange(listingId: string, labelUrl: string, itemUrls: string[]) {
+    cardPhotosRef.current.set(listingId, { labelUrl, itemUrls });
+  }
+
   function handleNext() {
+    // Build batch entries for listings 2+ that have at least one item photo
+    const batchListings = listings.slice(1)
+      .map((l) => {
+        const photos = cardPhotosRef.current.get(l.id);
+        return { id: l.id, labelUrl: photos?.labelUrl ?? '', itemUrls: photos?.itemUrls ?? [] };
+      })
+      .filter((l) => l.itemUrls.length > 0);
+
+    if (batchListings.length > 0) {
+      store.setBatchListings(batchListings);
+      store.setBatchTotalCount(1 + batchListings.length);
+    } else {
+      store.clearBatch();
+    }
+
     store.setCurrentStep(2);
     navigate(`/listing/${id}/step/2`);
   }
@@ -631,6 +657,7 @@ export default function Step1Photos() {
           collapsed={expandedIndex !== idx}
           onToggle={() => handleToggle(idx)}
           isFirst={idx === 0}
+          onPhotosChange={(label, items) => handlePhotosChange(listing.id, label, items)}
         />
       ))}
 

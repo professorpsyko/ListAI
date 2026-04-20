@@ -502,6 +502,25 @@ export default function Step8Preview() {
       : 'bg-green-600 hover:bg-green-700 text-white',
   );
 
+  // ── Batch: advance to next listing ────────────────────────────────────────
+  function handleNextBatchItem() {
+    const [next, ...remaining] = store.batchListings;
+    if (!next) return;
+
+    // Reset wizard state (batch survives reset)
+    store.reset();
+    store.setBatchListings(remaining);
+    store.setBatchTotalCount(store.batchTotalCount); // keep total for progress display
+
+    // Seed the new listing into the store
+    store.setListingId(next.id);
+    store.setLabelPhoto(next.labelUrl, null);
+    store.setItemPhotos(next.itemUrls, []);
+    store.setCurrentStep(2); // photos already uploaded — start at Identify
+
+    navigate(`/listing/${next.id}/step/2`);
+  }
+
   // ── Publish handler ────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!id) return;
@@ -630,12 +649,21 @@ export default function Step8Preview() {
                   >
                     View listing on eBay →
                   </a>
-                  <button
-                    onClick={() => { store.reset(); navigate('/dashboard'); }}
-                    className="block w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors text-center"
-                  >
-                    Create another listing
-                  </button>
+                  {store.batchListings.length > 0 ? (
+                    <button
+                      onClick={handleNextBatchItem}
+                      className="block w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-center transition-colors"
+                    >
+                      Continue to item {store.batchTotalCount - store.batchListings.length + 1} of {store.batchTotalCount} →
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { store.reset(); store.clearBatch(); navigate('/dashboard'); }}
+                      className="block w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors text-center"
+                    >
+                      Back to dashboard
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -882,6 +910,29 @@ export default function Step8Preview() {
           </div>
         </div>
       </div>
+
+      {/* ── Batch: save & continue ─────────────────────────────────────────── */}
+      {store.batchListings.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-blue-900">
+              {store.batchListings.length} more item{store.batchListings.length !== 1 ? 's' : ''} waiting in your batch
+            </p>
+            <p className="text-xs text-blue-600 mt-0.5">
+              You can publish this listing now, or save as draft and come back later.
+            </p>
+          </div>
+          <button
+            onClick={handleNextBatchItem}
+            className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            Save as draft &amp; continue
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Publish modal */}
       {renderPublishModal()}
