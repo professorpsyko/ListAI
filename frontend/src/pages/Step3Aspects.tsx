@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
 import { searchEbayCategories, getEbayCategoryAspects, updateListing } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
+import axios from 'axios';
 import clsx from 'clsx';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -279,6 +280,7 @@ export default function Step3Aspects() {
   const [aspectsError, setAspectsError] = useState<string | null>(null);
   const [aspectValues, setAspectValues] = useState<Record<string, string>>(store.itemAspects);
   const [showOptional, setShowOptional] = useState(false);
+  const [aspectsRetryCount, setAspectsRetryCount] = useState(0);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const requiredAspects = aspects.filter((a) => a.aspectConstraint.aspectRequired);
@@ -328,14 +330,15 @@ export default function Step3Aspects() {
 
   useStepAction('Continue \u2192', !canProceed, handleContinue);
 
-  // ── Fetch aspects when category changes ─────────────────────────────────────
+  // ── Fetch aspects when category changes (or user retries) ───────────────────
   const fetchAspectsRef = useRef<string>('');
   useEffect(() => {
     if (!categoryId) {
       setAspects([]);
       return;
     }
-    if (fetchAspectsRef.current === categoryId) return;
+    // Skip if already loaded for this category (unless retrying)
+    if (fetchAspectsRef.current === categoryId && aspectsRetryCount === 0) return;
     fetchAspectsRef.current = categoryId;
 
     setAspectsLoading(true);
@@ -359,12 +362,19 @@ export default function Step3Aspects() {
         });
         setAspectValues(prefilled);
       })
-      .catch((err: Error) => {
-        setAspectsError(err.message || 'Failed to load item aspects');
+      .catch((err: unknown) => {
+        // Surface the real error from the backend's `detail` field when available
+        let msg = 'Failed to load item specifics';
+        if (axios.isAxiosError(err)) {
+          msg = err.response?.data?.detail ?? err.response?.data?.error ?? err.message;
+        } else if (err instanceof Error) {
+          msg = err.message;
+        }
+        setAspectsError(msg);
       })
       .finally(() => setAspectsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryId]);
+  }, [categoryId, aspectsRetryCount]);
 
   // ── Search for categories (debounced) ───────────────────────────────────────
   useEffect(() => {
@@ -550,8 +560,20 @@ export default function Step3Aspects() {
           )}
 
           {aspectsError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-              {aspectsError} — you can still continue without aspects.
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 space-y-2">
+              <p><strong>Could not load item specifics:</strong> {aspectsError}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { fetchAspectsRef.current = ''; setAspectsRetryCount((n) => n + 1); }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-100 hover:bg-red-200 text-red-800 font-medium text-xs transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Retry
+                </button>
+                <span className="text-red-500 text-xs">You can still continue without item specifics.</span>
+              </div>
             </div>
           )}
 
