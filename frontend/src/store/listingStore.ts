@@ -80,6 +80,9 @@ export interface ListingState {
   itemDescription: string;
   descriptionSuggestion: string;
 
+  // Pre-generation status (fired from step 4 so step 6 arrives to ready content)
+  generationStatus: 'idle' | 'prefetching' | 'done';
+
   // Step 7 — Shipping
   shippingService: string;
   shippingCost: string;
@@ -128,6 +131,7 @@ export interface ListingState {
   setTitleSuggestion: (v: string) => void;
   setItemDescription: (v: string) => void;
   setDescriptionSuggestion: (v: string) => void;
+  setGenerationStatus: (s: ListingState['generationStatus']) => void;
   setShippingService: (v: string) => void;
   setShippingCost: (v: string) => void;
   setHandlingTime: (v: string) => void;
@@ -169,6 +173,7 @@ const initialState = {
   titleSuggestion: '',
   itemDescription: '',
   descriptionSuggestion: '',
+  generationStatus: 'idle' as const,
   shippingService: '',
   shippingCost: '',
   handlingTime: '',
@@ -212,6 +217,7 @@ export const useListingStore = create<ListingState>()(
       setTitleSuggestion: (v) => set({ titleSuggestion: v }),
       setItemDescription: (v) => set({ itemDescription: v }),
       setDescriptionSuggestion: (v) => set({ descriptionSuggestion: v }),
+      setGenerationStatus: (s) => set({ generationStatus: s }),
       setShippingService: (v) => set({ shippingService: v }),
       setShippingCost: (v) => set({ shippingCost: v }),
       setHandlingTime: (v) => set({ handlingTime: v }),

@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useListingStore } from '../store/listingStore';
-import { updateListing } from '../lib/api';
+import { generateTitle, generateDescription, updateListing } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
 
 const CONDITIONS = [
@@ -29,6 +29,26 @@ export default function Step3Details() {
       itemCondition: store.condition,
       specialNotes: store.specialNotes,
     });
+
+    // Kick off title + description generation now — all data is in DB (identification,
+    // condition, specialNotes, category). They run while the user fills out pricing so
+    // step 6 arrives to pre-populated fields with no wait.
+    store.setGenerationStatus('prefetching');
+    generateTitle(id)
+      .then(({ title }) => {
+        store.setTitleSuggestion(title);
+        if (!useListingStore.getState().itemTitle) store.setItemTitle(title);
+      })
+      .catch(() => {});
+    generateDescription(id)
+      .then(({ description }) => {
+        store.setDescriptionSuggestion(description);
+        store.setGenerationStatus('done');
+      })
+      .catch(() => {
+        store.setGenerationStatus('idle'); // fall back to on-demand gen in step 6
+      });
+
     store.setCurrentStep(5);
     navigate(`/listing/${id}/step/5`);
   }

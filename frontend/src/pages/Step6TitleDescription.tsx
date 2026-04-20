@@ -48,10 +48,12 @@ export default function Step6TitleDescription() {
   const navigate = useNavigate();
   const store = useListingStore();
 
-  const [titleLoading, setTitleLoading] = useState(false);
+  // If generation was already kicked off from step 4, start in loading state
+  const isPrefetching = store.generationStatus === 'prefetching';
+  const [titleLoading, setTitleLoading] = useState(isPrefetching);
   const [titleError, setTitleError] = useState<string | null>(null);
   const [showReasoning, setShowReasoning] = useState(false);
-  const [descLoading, setDescLoading] = useState(false);
+  const [descLoading, setDescLoading] = useState(isPrefetching);
 
   const charCount = store.itemTitle.length;
   const overLimit = charCount > 80;
@@ -69,19 +71,30 @@ export default function Step6TitleDescription() {
     },
   });
 
-  // Auto-generate title on mount
+  // Auto-generate title on mount — skip if prefetch from step 4 is in flight or already done
   useEffect(() => {
-    if (!store.itemTitle && !titleLoading) handleGenerateTitle();
+    if (store.generationStatus !== 'idle') return;
+    if (!store.itemTitle) handleGenerateTitle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-generate description on mount
+  // Auto-generate description on mount — skip if prefetch from step 4 is in flight or done
   useEffect(() => {
-    if (!store.descriptionSuggestion && !descLoading) void handleGenerateDesc(true);
+    if (store.generationStatus !== 'idle') return;
+    if (!store.descriptionSuggestion) void handleGenerateDesc(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load description suggestion into editor when it arrives
+  // When prefetch completes (generationStatus: prefetching → done), clear loading spinners
+  useEffect(() => {
+    if (store.generationStatus !== 'prefetching') {
+      setTitleLoading(false);
+      setDescLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.generationStatus]);
+
+  // Load description suggestion into editor when it arrives (from prefetch or on-demand)
   useEffect(() => {
     if (!editor || !store.descriptionSuggestion) return;
     if (!store.itemDescription || store.itemDescription === store.descriptionSuggestion) {
