@@ -48,6 +48,9 @@ export const getJobStatus = (id: string) =>
 export const editPhoto = (id: string, dataUrl: string) =>
   api.post(`/listings/${id}/photos/edit`, { dataUrl }).then((r) => r.data as { url: string });
 
+export const reprocessPhotos = (id: string) =>
+  api.post(`/listings/${id}/photos/reprocess`).then((r) => r.data);
+
 export const uploadPhotos = (id: string, files: File[]) => {
   const form = new FormData();
   files.forEach((f) => form.append('photos', f));

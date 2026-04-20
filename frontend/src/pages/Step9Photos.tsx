@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { useListingStore } from '../store/listingStore';
-import { updateListing } from '../lib/api';
+import { updateListing, reprocessPhotos } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
 import PhotoEditModal from '../components/PhotoEditModal';
 
@@ -129,6 +129,7 @@ export default function Step9Photos() {
   const [editingPhoto, setEditingPhoto] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const hasProcessed = store.processedPhotoUrls.length > 0;
   const isProcessing = !processingTimedOut && (store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED');
 
@@ -233,9 +234,39 @@ export default function Step9Photos() {
           <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
           </svg>
-          <div>
+          <div className="flex-1">
             <p className="font-medium">Photo processing is taking longer than expected.</p>
-            <p className="mt-0.5 text-amber-700">You can continue with your original photos — they'll work fine for your listing.</p>
+            <p className="mt-0.5 text-amber-700">You can retry processing or continue with your original photos — they'll work fine for your listing.</p>
+            <button
+              onClick={async () => {
+                if (!id || retrying) return;
+                setRetrying(true);
+                setProcessingTimedOut(false);
+                store.setImageJobStatus('PROCESSING');
+                try {
+                  await reprocessPhotos(id);
+                } catch {
+                  store.setImageJobStatus('FAILED');
+                  setProcessingTimedOut(true);
+                } finally {
+                  setRetrying(false);
+                }
+              }}
+              disabled={retrying}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium text-xs transition-colors disabled:opacity-50"
+            >
+              {retrying ? (
+                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              {retrying ? 'Retrying…' : 'Retry processing'}
+            </button>
           </div>
         </div>
       )}

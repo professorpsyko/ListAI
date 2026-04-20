@@ -165,6 +165,60 @@ router.post(
   },
 );
 
+// Re-trigger Cloudinary processing for an existing listing's photos
+router.post('/:id/photos/reprocess', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const listing = await prisma.listing.findFirst({
+    where: { id: req.params.id, userId: auth.user.id },
+  });
+  if (!listing) { res.status(404).json({ error: 'Listing not found' }); return; }
+  if (!listing.imageUrls.length) { res.status(400).json({ error: 'No images to process' }); return; }
+
+  // Extract Cloudinary public IDs from the original upload URLs
+  // URL format: https://res.cloudinary.com/<cloud>/image/upload/v<ver>/<public_id>.<ext>
+  const publicIds = listing.imageUrls
+    .filter((url) => url.includes('cloudinary.com'))
+    .map((url) => {
+      const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[a-z]+)?$/i);
+      return match ? match[1] : null;
+    })
+    .filter((id): id is string => !!id);
+
+  if (!publicIds.length) { res.status(400).json({ error: 'Could not extract Cloudinary public IDs' }); return; }
+
+  await prisma.listing.update({
+    where: { id: req.params.id },
+    data: { imageJobStatus: 'PROCESSING' },
+  });
+
+  res.json({ status: 'PROCESSING', count: publicIds.length });
+
+  const listingId = req.params.id;
+  setImmediate(async () => {
+    try {
+      console.log(`[reprocess] Processing ${publicIds.length} image(s) for listing ${listingId}`);
+      const { processMultipleImages } = await import('../services/image');
+      const results = await processMultipleImages(publicIds);
+      const processedUrls = results.map((r) => r.processedUrl);
+      const failedCount = results.filter((r) => r.failed).length;
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          processedImageUrls: processedUrls,
+          imageJobStatus: failedCount === results.length ? 'FAILED' : 'COMPLETE',
+        },
+      });
+      console.log(`[reprocess] Done for ${listingId}. ${failedCount} failed, ${results.length - failedCount} succeeded.`);
+    } catch (err) {
+      console.error(`[reprocess] Failed for ${listingId}:`, (err as Error).message);
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: { imageJobStatus: 'FAILED' },
+      }).catch(console.error);
+    }
+  });
+});
+
 // Save an edited photo (canvas data URL → Cloudinary → return new URL)
 router.post('/:id/photos/edit', requireAuth, async (req: Request, res: Response) => {
   const auth = req as AuthenticatedRequest;
