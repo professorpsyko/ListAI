@@ -16,10 +16,9 @@ const STEPS = [
   { n: 3, label: 'Aspects' },
   { n: 4, label: 'Details' },
   { n: 5, label: 'Price & Ship' },
-  { n: 6, label: 'Title' },
-  { n: 7, label: 'Description' },
-  { n: 8, label: 'Photos' },
-  { n: 9, label: 'Preview' },
+  { n: 6, label: 'Title & Desc' },
+  { n: 7, label: 'Photos' },
+  { n: 8, label: 'Preview' },
 ];
 
 // Which fields mark a step as complete
@@ -30,9 +29,8 @@ function isStepComplete(step: number, s: ReturnType<typeof useListingStore.getSt
     case 3: return s.aspectsConfirmed;
     case 4: return !!s.condition;
     case 5: return (!!s.finalPrice || !!s.startingBid) && !!s.shippingService;
-    case 6: return !!s.itemTitle;
-    case 7: return !!s.itemDescription;
-    case 8: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
+    case 6: return !!s.itemTitle && !!s.itemDescription;
+    case 7: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
     default: return false;
   }
 }
@@ -64,33 +62,21 @@ export default function WizardLayout() {
   return (
     <StepActionContext.Provider value={{ setAction: setStepAction }}>
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Top nav — two rows: brand bar + step bar */}
+      {/* Header — single row: logo | steps | settings+user */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        {/* Row 1: logo + settings/user */}
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-12 border-b border-gray-100">
-          <Link to="/dashboard">
+        <div className="max-w-6xl mx-auto px-6 flex items-center gap-4 h-14">
+          {/* Logo */}
+          <Link to="/dashboard" className="flex-shrink-0">
             <img src="/logo.png" alt="ListSamurAI" className="h-7 w-auto" />
           </Link>
-          <div className="flex items-center gap-3">
-            <Link to="/settings" className="text-gray-500 hover:text-gray-700" title="Settings">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </Link>
-            <UserButton afterSignOutUrl="/sign-in" />
-          </div>
-        </div>
 
-        {/* Row 2: step navigation — all labels always visible */}
-        <div className="max-w-6xl mx-auto px-6">
-          <nav className="flex items-center justify-center gap-0.5 h-10">
+          {/* Step navigation — grows to fill space */}
+          <nav className="flex items-center justify-center gap-0.5 flex-1 min-w-0">
             {STEPS.map((step, idx) => {
               const done = isStepComplete(step.n, store);
               const active = currentStep === step.n;
-
               return (
-                <div key={step.n} className="flex items-center">
+                <div key={step.n} className="flex items-center flex-shrink-0">
                   <button
                     onClick={() => goToStep(step.n)}
                     className={clsx(
@@ -120,12 +106,23 @@ export default function WizardLayout() {
               );
             })}
           </nav>
+
+          {/* Settings + user */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Link to="/settings" className="text-gray-500 hover:text-gray-700" title="Settings">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </Link>
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
         </div>
       </header>
 
-      {/* Step action bar — sticky below header (row1 48px + row2 40px = 88px) */}
+      {/* Step action bar — sticky below single-row header (h-14 = 56px) */}
       {stepAction && (
-        <div className="sticky top-[88px] z-10 bg-white border-b border-gray-100 shadow-sm">
+        <div className="sticky top-14 z-10 bg-white border-b border-gray-100 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-2.5 flex justify-end">
             <button
               onClick={stepAction.onClick}

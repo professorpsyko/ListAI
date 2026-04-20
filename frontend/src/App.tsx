@@ -9,10 +9,9 @@ import Step2Identify from './pages/Step2Identify';
 import Step3Aspects from './pages/Step3Aspects';
 import Step4Details from './pages/Step3Details';
 import Step5PriceShipping from './pages/Step5PriceShipping';
-import Step6Title from './pages/Step5Title';
-import Step7Description from './pages/Step6Description';
-import Step8Photos from './pages/Step9Photos';
-import Step9Preview from './pages/Step8Preview';
+import Step6TitleDescription from './pages/Step6TitleDescription';
+import Step7Photos from './pages/Step9Photos';
+import Step8Preview from './pages/Step8Preview';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 
@@ -74,10 +73,9 @@ export default function App() {
           <Route path="step/3" element={<Step3Aspects />} />
           <Route path="step/4" element={<Step4Details />} />
           <Route path="step/5" element={<Step5PriceShipping />} />
-          <Route path="step/6" element={<Step6Title />} />
-          <Route path="step/7" element={<Step7Description />} />
-          <Route path="step/8" element={<Step8Photos />} />
-          <Route path="step/9" element={<Step9Preview />} />
+          <Route path="step/6" element={<Step6TitleDescription />} />
+          <Route path="step/7" element={<Step7Photos />} />
+          <Route path="step/8" element={<Step8Preview />} />
           <Route index element={<Navigate to="step/1" replace />} />
         </Route>
 
