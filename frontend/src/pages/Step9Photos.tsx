@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   DndContext,
@@ -17,9 +17,75 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { useListingStore } from '../store/listingStore';
-import { updateListing, reprocessPhotos } from '../lib/api';
+import { updateListing, reprocessPhotos, editPhoto } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
 import PhotoEditModal from '../components/PhotoEditModal';
+
+// ─── Canvas helpers (shared with PhotoEditModal logic) ────────────────────────
+
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src.includes('cloudinary.com') ? `${src}?cb=${Date.now()}` : src;
+  });
+}
+
+async function renderToBlob(
+  img: HTMLImageElement,
+  brightness: number,
+  contrast: number,
+  saturation: number,
+): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d')!;
+  const b = 1 + brightness / 100;
+  const c = 1 + contrast / 100;
+  const s = 1 + saturation / 100;
+  ctx.filter = `brightness(${b}) contrast(${c}) saturate(${s})`;
+  ctx.drawImage(img, 0, 0);
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
+      'image/jpeg',
+      0.93,
+    ),
+  );
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((res) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ─── Mini slider ─────────────────────────────────────────────────────────────
+
+function MiniSlider({
+  label, value, onChange,
+}: {
+  label: string; value: number; onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <span className="text-xs text-gray-500 w-20 flex-shrink-0">{label}</span>
+      <input
+        type="range" min={-100} max={100} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 h-1.5 bg-gray-200 rounded-full appearance-none accent-blue-600 cursor-pointer"
+      />
+      <span className={clsx('text-xs font-mono w-8 text-right flex-shrink-0', value !== 0 ? 'text-blue-600' : 'text-gray-400')}>
+        {value > 0 ? `+${value}` : value}
+      </span>
+    </div>
+  );
+}
 
 // ─── Sortable photo tile ──────────────────────────────────────────────────────
 
@@ -27,12 +93,14 @@ function SortablePhotoTile({
   url,
   index,
   isLabel,
+  masterFilter,
   onRemove,
   onEdit,
 }: {
   url: string;
   index: number;
   isLabel: boolean;
+  masterFilter: string;
   onRemove: (url: string) => void;
   onEdit: (url: string) => void;
 }) {
@@ -54,28 +122,24 @@ function SortablePhotoTile({
       style={style}
       className={clsx(
         'relative group rounded-xl overflow-hidden border-2 bg-gray-50 select-none',
-        isMain
-          ? 'col-span-2 row-span-2 border-blue-400 shadow-lg'
-          : 'border-gray-200 shadow-sm',
+        isMain ? 'col-span-2 row-span-2 border-blue-400 shadow-lg' : 'border-gray-200 shadow-sm',
         isDragging && 'shadow-2xl ring-2 ring-blue-300',
       )}
     >
-      {/* Drag handle overlay */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing z-10"
-      />
+      <div {...attributes} {...listeners} className="absolute inset-0 cursor-grab active:cursor-grabbing z-10" />
 
       <img
         src={url}
         alt={isLabel ? 'Tag / serial' : `Photo ${index + 1}`}
         draggable={false}
         className="w-full h-full object-cover"
-        style={{ aspectRatio: isMain ? '1 / 1' : '1 / 1', minHeight: isMain ? '240px' : '110px' }}
+        style={{
+          aspectRatio: '1 / 1',
+          minHeight: isMain ? '240px' : '110px',
+          filter: isLabel ? undefined : masterFilter,
+        }}
       />
 
-      {/* Badges */}
       {isMain && (
         <span className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full shadow pointer-events-none z-20">
           Main
@@ -92,7 +156,6 @@ function SortablePhotoTile({
         </span>
       )}
 
-      {/* Action buttons — shown on hover */}
       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <button
           type="button"
@@ -130,17 +193,27 @@ export default function Step9Photos() {
   const [showOriginal, setShowOriginal] = useState(false);
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const [retrying, setRetrying] = useState(false);
+
+  // Master adjustment sliders
+  const [masterBrightness, setMasterBrightness] = useState(0);
+  const [masterContrast, setMasterContrast] = useState(0);
+  const [masterSaturation, setMasterSaturation] = useState(0);
+  const [applyingAll, setApplyingAll] = useState(false);
+  const [applyProgress, setApplyProgress] = useState(0);
+  const hasMasterAdjustment = masterBrightness !== 0 || masterContrast !== 0 || masterSaturation !== 0;
+  const masterFilter = hasMasterAdjustment
+    ? `brightness(${1 + masterBrightness / 100}) contrast(${1 + masterContrast / 100}) saturate(${1 + masterSaturation / 100})`
+    : 'none';
+
   const hasProcessed = store.processedPhotoUrls.length > 0;
   const isProcessing = !processingTimedOut && (store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED');
-  // Show enhance button when not processing and no processed photos exist yet
   const showEnhanceButton = !hasProcessed && !isProcessing && !retrying;
 
-  // If processing takes more than 45 s, stop waiting and let the user proceed with originals
   useEffect(() => {
     if (!isProcessing || hasProcessed) return;
     const t = setTimeout(() => setProcessingTimedOut(true), 45_000);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.imageJobStatus]);
 
   async function handleReprocess() {
@@ -160,12 +233,9 @@ export default function Step9Photos() {
   const labelUrl = store.labelPhotoUrl;
 
   function buildOrderedPhotos(itemUrls: string[], processedUrls: string[]): string[] {
-    // Base pool: processed item photos (or original item photos as fallback)
     const base = (!showOriginal && hasProcessed && processedUrls.length)
-      ? processedUrls.filter((u) => u !== labelUrl)   // processed never contains labelUrl, filter is a no-op but safe
+      ? processedUrls
       : itemUrls;
-    // Append original label at the end — we always show the label as original
-    // (processed version is identical visually and avoids URL-matching headaches)
     return labelUrl ? [...base, labelUrl] : base;
   }
 
@@ -173,11 +243,45 @@ export default function Step9Photos() {
     buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls),
   );
 
-  // Re-sync when processed photos arrive or toggle changes
   useEffect(() => {
     setOrderedPhotos(buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.processedPhotoUrls.length, showOriginal]);
+
+  // ── Apply master adjustments to all item photos ──────────────────────────
+
+  const applyMasterToAll = useCallback(async () => {
+    if (!id || !hasMasterAdjustment) return;
+    const photosToProcess = orderedPhotos.filter((u) => u !== labelUrl);
+    setApplyingAll(true);
+    setApplyProgress(0);
+    const newUrls: string[] = [];
+    try {
+      for (let i = 0; i < photosToProcess.length; i++) {
+        const url = photosToProcess[i];
+        try {
+          const img = await loadImage(url);
+          const blob = await renderToBlob(img, masterBrightness, masterContrast, masterSaturation);
+          const dataUrl = await blobToDataUrl(blob);
+          const { url: newUrl } = await editPhoto(id, dataUrl);
+          newUrls.push(newUrl);
+        } catch {
+          newUrls.push(url); // keep original on failure
+        }
+        setApplyProgress(Math.round(((i + 1) / photosToProcess.length) * 100));
+      }
+      // Replace item photos with new URLs, keep label at end
+      const updated = labelUrl ? [...newUrls, labelUrl] : newUrls;
+      setOrderedPhotos(updated);
+      // Reset sliders
+      setMasterBrightness(0);
+      setMasterContrast(0);
+      setMasterSaturation(0);
+    } finally {
+      setApplyingAll(false);
+      setApplyProgress(0);
+    }
+  }, [id, orderedPhotos, labelUrl, masterBrightness, masterContrast, masterSaturation, hasMasterAdjustment]);
 
   // DnD
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -208,15 +312,11 @@ export default function Step9Photos() {
   async function handleNext() {
     if (!id || !canProceed) return;
 
-    // Save the final ordered + filtered photo list back to the listing
-    await updateListing(id, {
-      imageUrls: orderedPhotos,
-      processedImageUrls: orderedPhotos,
-    });
+    // Save ordered list as processedImageUrls; keep original imageUrls intact
+    await updateListing(id, { processedImageUrls: orderedPhotos });
 
-    // Sync store
+    // Sync store: processed photos = ordered list minus label
     const nonLabel = orderedPhotos.filter((u) => u !== labelUrl);
-    store.setItemPhotos(nonLabel);
     store.setProcessedPhotos(nonLabel);
 
     store.setCurrentStep(10);
@@ -243,6 +343,7 @@ export default function Step9Photos() {
           <span>Photo enhancement in progress — photos will update automatically when ready.</span>
         </div>
       )}
+
       {/* Timed-out banner */}
       {processingTimedOut && !hasProcessed && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
@@ -262,12 +363,9 @@ export default function Step9Photos() {
         </div>
       )}
 
-      {/* Enhance button — always visible when no processed photos and not currently running */}
+      {/* Enhance button */}
       {showEnhanceButton && (
-        <button
-          onClick={handleReprocess}
-          className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-        >
+        <button onClick={handleReprocess} className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
           </svg>
@@ -275,26 +373,20 @@ export default function Step9Photos() {
         </button>
       )}
 
-      {/* Processed / Original toggle */}
+      {/* Processed / Original toggle + photo count */}
       {hasProcessed && (
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">Showing:</span>
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
             <button
               onClick={() => setShowOriginal(false)}
-              className={clsx(
-                'px-3 py-1.5 font-medium transition-colors',
-                !showOriginal ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50',
-              )}
+              className={clsx('px-3 py-1.5 font-medium transition-colors', !showOriginal ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
             >
               Processed
             </button>
             <button
               onClick={() => setShowOriginal(true)}
-              className={clsx(
-                'px-3 py-1.5 font-medium transition-colors border-l border-gray-200',
-                showOriginal ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50',
-              )}
+              className={clsx('px-3 py-1.5 font-medium transition-colors border-l border-gray-200', showOriginal ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
             >
               Original
             </button>
@@ -303,13 +395,54 @@ export default function Step9Photos() {
         </div>
       )}
 
+      {/* ── Master adjustment sliders ───────────────────────────────────────── */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-gray-700">Adjust all photos</p>
+          <div className="flex items-center gap-2">
+            {hasMasterAdjustment && (
+              <button
+                onClick={() => { setMasterBrightness(0); setMasterContrast(0); setMasterSaturation(0); }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Reset
+              </button>
+            )}
+            <button
+              onClick={applyMasterToAll}
+              disabled={!hasMasterAdjustment || applyingAll}
+              className="text-xs bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {applyingAll ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  {applyProgress}%
+                </>
+              ) : (
+                'Apply to all'
+              )}
+            </button>
+          </div>
+        </div>
+        <MiniSlider label="Brightness" value={masterBrightness} onChange={setMasterBrightness} />
+        <MiniSlider label="Contrast"   value={masterContrast}   onChange={setMasterContrast}   />
+        <MiniSlider label="Saturation" value={masterSaturation} onChange={setMasterSaturation} />
+        {hasMasterAdjustment && !applyingAll && (
+          <p className="text-xs text-blue-600">Preview active — click "Apply to all" to save changes</p>
+        )}
+        {applyingAll && (
+          <div className="w-full h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${applyProgress}%` }} />
+          </div>
+        )}
+      </div>
+
       {/* Photo grid */}
       {orderedPhotos.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedPhotos} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-4 gap-3 auto-rows-auto">
               {orderedPhotos.map((url, i) => (
@@ -318,6 +451,7 @@ export default function Step9Photos() {
                   url={url}
                   index={i}
                   isLabel={url === labelUrl}
+                  masterFilter={masterFilter}
                   onRemove={handleRemove}
                   onEdit={setEditingPhoto}
                 />
