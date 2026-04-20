@@ -66,15 +66,17 @@ export async function processImage(publicId: string): Promise<ProcessedImage> {
   ];
 
   try {
-    // Eagerly bake the transformation into the Cloudinary CDN
-    await cloudinary.uploader.explicit(publicId, {
+    // Eagerly bake the transformation and use the URL returned in the response
+    // (avoids any mismatch between cloudinary.url() formula and what CDN computed)
+    const result = await cloudinary.uploader.explicit(publicId, {
       type: 'upload',
       eager: transformation,
-      timeout: 60000,
     });
 
-    const processedUrl = cloudinary.url(publicId, { transformation, secure: true });
-    console.log(`[image] Processed ${publicId}`);
+    const eagerUrl: string | undefined = result.eager?.[0]?.secure_url;
+    // Fall back to formula URL if eager result is missing (shouldn't happen)
+    const processedUrl = eagerUrl ?? cloudinary.url(publicId, { transformation, secure: true });
+    console.log(`[image] Processed ${publicId} → ${eagerUrl ? 'eager URL' : 'formula URL'}`);
     return {
       originalUrl: cloudinary.url(publicId, { secure: true }),
       processedUrl,

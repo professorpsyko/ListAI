@@ -159,24 +159,14 @@ export default function Step9Photos() {
 
   const labelUrl = store.labelPhotoUrl;
 
-  // Find which index in the originals is the label photo, then carry that index
-  // into the processed array so we always find the right "label" URL regardless
-  // of whether we're showing originals or processed versions.
-  const labelIndex = labelUrl ? store.itemPhotoUrls.indexOf(labelUrl) : -1;
-
-  function buildOrderedPhotos(originals: string[], processed: string[]): string[] {
-    const useProcessed = !showOriginal && hasProcessed;
-    const pool = useProcessed ? processed : originals;
-    // All photos — processed or original
-    const allPhotos = pool.length ? pool : originals;
-    // Determine the effective label URL in this pool
-    const effectiveLabelUrl = labelIndex >= 0 && labelIndex < allPhotos.length
-      ? allPhotos[labelIndex]
-      : null;
-    const withoutLabel = effectiveLabelUrl
-      ? allPhotos.filter((u) => u !== effectiveLabelUrl)
-      : allPhotos;
-    return effectiveLabelUrl ? [...withoutLabel, effectiveLabelUrl] : withoutLabel;
+  function buildOrderedPhotos(itemUrls: string[], processedUrls: string[]): string[] {
+    // Base pool: processed item photos (or original item photos as fallback)
+    const base = (!showOriginal && hasProcessed && processedUrls.length)
+      ? processedUrls.filter((u) => u !== labelUrl)   // processed never contains labelUrl, filter is a no-op but safe
+      : itemUrls;
+    // Append original label at the end — we always show the label as original
+    // (processed version is identical visually and avoids URL-matching headaches)
+    return labelUrl ? [...base, labelUrl] : base;
   }
 
   const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
@@ -327,7 +317,7 @@ export default function Step9Photos() {
                   key={url}
                   url={url}
                   index={i}
-                  isLabel={i === orderedPhotos.length - 1 && labelIndex >= 0}
+                  isLabel={url === labelUrl}
                   onRemove={handleRemove}
                   onEdit={setEditingPhoto}
                 />

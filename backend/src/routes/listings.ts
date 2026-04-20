@@ -140,12 +140,21 @@ router.post(
         console.log(`[upload] Processing ${newPublicIds.length} image(s) for listing ${listingId}`);
         const { processMultipleImages } = await import('../services/image');
         const results = await processMultipleImages(newPublicIds);
-        const processedUrls = results.map((r) => r.processedUrl);
+        const newProcessedUrls = results.map((r) => r.processedUrl);
         const failedCount = results.filter((r) => r.failed).length;
+
+        // Re-fetch listing to get current processedImageUrls before appending
+        // (avoids overwriting a previous batch processed in parallel)
+        const current = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { processedImageUrls: true },
+        });
+        const merged = [...(current?.processedImageUrls ?? []), ...newProcessedUrls];
+
         await prisma.listing.update({
           where: { id: listingId },
           data: {
-            processedImageUrls: processedUrls,
+            processedImageUrls: merged,
             imageJobStatus: failedCount === results.length ? 'FAILED' : 'COMPLETE',
           },
         });
