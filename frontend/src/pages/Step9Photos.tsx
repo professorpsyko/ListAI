@@ -233,10 +233,16 @@ export default function Step9Photos() {
   const labelUrl = store.labelPhotoUrl;
 
   function buildOrderedPhotos(itemUrls: string[], processedUrls: string[]): string[] {
-    const base = (!showOriginal && hasProcessed && processedUrls.length)
-      ? processedUrls
-      : itemUrls;
-    return labelUrl ? [...base, labelUrl] : base;
+    if (!showOriginal && hasProcessed && processedUrls.length) {
+      // processedUrls[0] is the label's processed version (label uploaded first, processed first).
+      // We only want processed versions of the item photos — take the last itemUrls.length entries.
+      const expected = itemUrls.length;
+      const itemProcessed = processedUrls.length > expected
+        ? processedUrls.slice(processedUrls.length - expected)
+        : processedUrls;
+      return labelUrl ? [...itemProcessed, labelUrl] : itemProcessed;
+    }
+    return labelUrl ? [...itemUrls, labelUrl] : itemUrls;
   }
 
   const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
