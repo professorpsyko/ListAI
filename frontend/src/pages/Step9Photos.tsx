@@ -157,26 +157,35 @@ export default function Step9Photos() {
     }
   }
 
-  // Build initial ordered list: processed (or original) + label at end
-  const basePhotos = showOriginal || !hasProcessed
-    ? store.itemPhotoUrls
-    : store.processedPhotoUrls;
-
   const labelUrl = store.labelPhotoUrl;
 
-  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() => {
-    const withoutLabel = labelUrl ? basePhotos.filter((u) => u !== labelUrl) : basePhotos;
-    return labelUrl ? [...withoutLabel, labelUrl] : withoutLabel;
-  });
+  // Find which index in the originals is the label photo, then carry that index
+  // into the processed array so we always find the right "label" URL regardless
+  // of whether we're showing originals or processed versions.
+  const labelIndex = labelUrl ? store.itemPhotoUrls.indexOf(labelUrl) : -1;
 
-  // Re-sync when processed photos arrive (background job finishes)
+  function buildOrderedPhotos(originals: string[], processed: string[]): string[] {
+    const useProcessed = !showOriginal && hasProcessed;
+    const pool = useProcessed ? processed : originals;
+    // All photos — processed or original
+    const allPhotos = pool.length ? pool : originals;
+    // Determine the effective label URL in this pool
+    const effectiveLabelUrl = labelIndex >= 0 && labelIndex < allPhotos.length
+      ? allPhotos[labelIndex]
+      : null;
+    const withoutLabel = effectiveLabelUrl
+      ? allPhotos.filter((u) => u !== effectiveLabelUrl)
+      : allPhotos;
+    return effectiveLabelUrl ? [...withoutLabel, effectiveLabelUrl] : withoutLabel;
+  }
+
+  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
+    buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls),
+  );
+
+  // Re-sync when processed photos arrive or toggle changes
   useEffect(() => {
-    const fresh = showOriginal || !hasProcessed
-      ? store.itemPhotoUrls
-      : store.processedPhotoUrls;
-    const withoutLabel = labelUrl ? fresh.filter((u) => u !== labelUrl) : fresh;
-    const withLabel = labelUrl ? [...withoutLabel, labelUrl] : withoutLabel;
-    setOrderedPhotos(withLabel);
+    setOrderedPhotos(buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.processedPhotoUrls.length, showOriginal]);
 
@@ -318,7 +327,7 @@ export default function Step9Photos() {
                   key={url}
                   url={url}
                   index={i}
-                  isLabel={url === labelUrl}
+                  isLabel={i === orderedPhotos.length - 1 && labelIndex >= 0}
                   onRemove={handleRemove}
                   onEdit={setEditingPhoto}
                 />
