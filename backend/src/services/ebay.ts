@@ -236,7 +236,7 @@ export async function publishListing(
   const useBusinessPolicies = !!(sellerPolicies?.fulfillmentPolicyId);
   console.log(`[eBay] Using ${useBusinessPolicies ? 'Business Policies' : 'legacy'} shipping/returns fields`);
 
-  const conditionId = CONDITION_MAP[data.condition] ?? 4000;
+  let conditionId = CONDITION_MAP[data.condition] ?? 4000;
   const shippingServiceCode = SHIPPING_SERVICE_MAP[data.shippingService] ?? 'USPSPriority';
   const isFreeShipping = data.shippingCost === 0 || data.shippingService.includes('Free shipping');
 
@@ -302,7 +302,8 @@ export async function publishListing(
     : '';
 
   /** Fire an AddItem call and return the parsed response */
-  async function callAddItem(conditionDescriptorsXml: string) {
+  async function callAddItem(conditionDescriptorsXml: string, overrideConditionId?: number) {
+    const effectiveConditionId = overrideConditionId ?? conditionId;
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
@@ -314,7 +315,7 @@ export async function publishListing(
     <PrimaryCategory>
       <CategoryID>${resolvedCategoryId}</CategoryID>
     </PrimaryCategory>
-    <ConditionID>${conditionId}</ConditionID>
+    <ConditionID>${effectiveConditionId}</ConditionID>
     <StartPrice>${data.listingType === 'AUCTION' ? (data.startingBid ?? 0.99) : data.price}</StartPrice>
     ${listingTypeXml}
     <Country>US</Country>
@@ -353,30 +354,45 @@ export async function publishListing(
     return parsed.AddItemResponse as Record<string, unknown>;
   }
 
-  // ── First attempt (no ConditionDescriptors) ─────────────────────────────────
+  // ── First attempt ────────────────────────────────────────────────────────────
   let result = await callAddItem('');
   let allErrors = result.Errors
     ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors]) as Array<Record<string, unknown>>
     : [];
-
-  // ── If eBay requires ConditionDescriptors, extract IDs from the error and retry ──
   console.log('[eBay] First attempt errors:', JSON.stringify(allErrors, null, 2));
-  const needs21920370 = allErrors.some((e) => String(e.ErrorCode) === '21920370');
-  if (needs21920370 && !result.ItemID) {
-    const descriptorError = allErrors.find((e) => String(e.ErrorCode) === '21920370')!;
-    console.log('[eBay] 21920370 full error object:', JSON.stringify(descriptorError, null, 2));
-    const descriptorIds = extractDescriptorIds(descriptorError);
-    console.log('[eBay] 21920370: extracted required descriptor IDs:', descriptorIds);
 
-    // If eBay didn't put IDs in ErrorParameters, fall back to common known IDs for
-    // shoe/collectible grading programs (covers most cases).
-    const idsToUse = descriptorIds.length > 0 ? descriptorIds : ['27000', '27001'];
+  // ── Analyse errors and build a single smart retry if needed ──────────────────
+  // 21920370 = deprecated Grade/Certification aspects warning (SeverityCode: Warning)
+  // 21920350 = condition ID not valid for this category (e.g. shoes don't support 5000)
+  // 21916883 = invalid condition id (same root cause as 21920350)
+  const hasConditionError = allErrors.some((e) =>
+    ['21920350', '21916883'].includes(String(e.ErrorCode)),
+  );
+  const hasDeprecatedAspectsWarning = allErrors.some((e) => String(e.ErrorCode) === '21920370');
 
-    const descriptors = idsToUse.map((id) => ({ id, value: 'Not Applicable' }));
-    const condDescXml = buildConditionDescriptorsXml(descriptors);
-    console.log('[eBay] Retrying with ConditionDescriptors:', descriptors);
+  if (!result.ItemID && (hasConditionError || hasDeprecatedAspectsWarning)) {
+    // Fix 1: If the condition is invalid for this category, fall back to 3000 (Pre-Owned).
+    // Shoe / apparel categories only support 1000/1500/1750/3000 — not 4000/5000/7000.
+    const retryConditionId = hasConditionError ? 3000 : undefined;
+    if (hasConditionError) {
+      console.log(`[eBay] Condition ${conditionId} rejected for category ${resolvedCategoryId} — retrying with condition 3000 (Pre-Owned)`);
+    }
 
-    result = await callAddItem(condDescXml);
+    // Fix 2: If 21920370 fired, include ConditionDescriptors.
+    // Extract IDs from ErrorParameters; fall back to common shoe/collectible IDs.
+    let condDescXml = '';
+    if (hasDeprecatedAspectsWarning) {
+      const descriptorError = allErrors.find((e) => String(e.ErrorCode) === '21920370')!;
+      console.log('[eBay] 21920370 full error object:', JSON.stringify(descriptorError, null, 2));
+      const descriptorIds = extractDescriptorIds(descriptorError);
+      console.log('[eBay] 21920370: extracted descriptor IDs:', descriptorIds);
+      const idsToUse = descriptorIds.length > 0 ? descriptorIds : ['27000'];
+      const descriptors = idsToUse.map((id) => ({ id, value: 'Not Applicable' }));
+      condDescXml = buildConditionDescriptorsXml(descriptors);
+      console.log('[eBay] Including ConditionDescriptors in retry:', descriptors);
+    }
+
+    result = await callAddItem(condDescXml, retryConditionId);
     allErrors = result.Errors
       ? (Array.isArray(result.Errors) ? result.Errors : [result.Errors]) as Array<Record<string, unknown>>
       : [];
@@ -391,9 +407,10 @@ export async function publishListing(
   // If eBay returned an ItemID, the listing was created — treat as success even if Ack is
   // non-standard (e.g. deprecation warnings eBay now surfaces as "Failure" for some categories)
   if (!itemId && (result.Ack === 'Failure' || (result.Ack !== 'Success' && result.Ack !== 'Warning'))) {
-    const firstError = allErrors[0];
-    const code = parseInt(firstError?.ErrorCode as string ?? '0', 10);
-    const rawMessage = (firstError?.LongMessage ?? firstError?.ShortMessage ?? 'Unknown eBay error') as string;
+    // Prefer a hard Error-severity message over a Warning for the user-facing error
+    const hardError = allErrors.find((e) => e.SeverityCode === 'Error') ?? allErrors[0];
+    const code = parseInt(hardError?.ErrorCode as string ?? '0', 10);
+    const rawMessage = (hardError?.LongMessage ?? hardError?.ShortMessage ?? 'Unknown eBay error') as string;
     console.error('[eBay] Publish failed:', { ack: result.Ack, code, rawMessage, errors: allErrors });
     throw new Error(mapEbayError(code, rawMessage));
   }
