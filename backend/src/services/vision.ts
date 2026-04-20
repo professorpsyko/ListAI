@@ -28,13 +28,18 @@ interface VisionOptions {
 }
 
 /**
- * If the URL is a Cloudinary URL, insert resize transformations so we
- * download a small JPEG instead of a full-resolution phone photo.
+ * If the URL is a plain Cloudinary upload URL (no existing transformations),
+ * insert resize params so we download a small JPEG instead of a full-res photo.
+ * Leave pre-transformed URLs unchanged to avoid conflicting transformation chains.
  */
 function shrinkCloudinaryUrl(url: string): string {
+  if (!url.includes('cloudinary.com')) return url;
+  // Match /image/upload/ followed immediately by a version (v\d+) or the folder path.
+  // If there are already transformation params after /upload/ (letters, underscores, commas)
+  // we leave the URL alone.
   return url.replace(
-    /\/image\/upload\//,
-    '/image/upload/w_800,h_800,c_limit,q_70,f_jpg/',
+    /\/image\/upload\/(v\d+\/|listai\/)/,
+    '/image/upload/w_800,h_800,c_limit,q_70,f_jpg/$1',
   );
 }
 

@@ -297,7 +297,9 @@ router.post('/:id/identify', requireAuth, async (req: Request, res: Response) =>
     return;
   }
 
-  const imageUrls = listing.processedImageUrls.length ? listing.processedImageUrls : listing.imageUrls;
+  // Always identify from original uploads — processed URLs contain Cloudinary
+  // transformation chains that can be slow/unavailable while processing
+  const imageUrls = listing.imageUrls.length ? listing.imageUrls : listing.processedImageUrls;
   if (!imageUrls.length) {
     res.status(400).json({ error: 'No photos uploaded yet' });
     return;
@@ -347,7 +349,8 @@ router.post('/:id/retry-identify', requireAuth, async (req: Request, res: Respon
     return;
   }
 
-  const imageUrls = listing.processedImageUrls.length ? listing.processedImageUrls : listing.imageUrls;
+  // Always use originals for identification (same reason as above)
+  const imageUrls = listing.imageUrls.length ? listing.imageUrls : listing.processedImageUrls;
 
   try {
     const result = await identifyItem({ imageUrls, userCorrection });
