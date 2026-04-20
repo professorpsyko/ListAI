@@ -173,12 +173,47 @@ export default function Step4Pricing() {
 
           {!isLoading && !isQueuing && pricing && (
             <>
+              {/* Suggested price */}
               <div>
                 <p className="text-sm text-gray-500 mb-1">Suggested price</p>
                 <p className="text-3xl font-bold text-gray-900">${pricing.suggestedPrice.toFixed(2)}</p>
                 <p className="text-sm text-gray-400 mt-1">Range: ${pricing.priceRange?.low} – ${pricing.priceRange?.high}</p>
               </div>
 
+              {/* eBay completed listings search — right below suggested price */}
+              <div className="flex items-center gap-2">
+                {editingSearch ? (
+                  <>
+                    <input
+                      value={ebaySearchQuery}
+                      onChange={(e) => setEbaySearchQuery(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button onClick={() => setEditingSearch(false)} className="text-xs text-gray-500 hover:text-gray-700">Done</button>
+                    <a href={buildEbayUrl()} target="_blank" rel="noopener noreferrer"
+                      className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">
+                      Search
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <a href={buildEbayUrl()} target="_blank" rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex-1 truncate">
+                      Search eBay completed listings
+                    </a>
+                    <button onClick={() => setEditingSearch(true)} className="text-gray-400 hover:text-gray-600 flex-shrink-0" title="Edit search">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Reasoning */}
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">Reasoning</p>
                 <ul className="space-y-1">
@@ -191,54 +226,66 @@ export default function Step4Pricing() {
                 </ul>
               </div>
 
-              {pricing.sourceUrls?.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700 mb-2">Sources</p>
-                  <ul className="space-y-1">
-                    {pricing.sourceUrls.slice(0, 4).map((url, i) => (
-                      <li key={i}>
-                        <a href={url} target="_blank" rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:underline truncate block max-w-xs">
-                          {new URL(url).hostname}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* eBay completed listings link */}
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-2">Search eBay completed listings</p>
-                <div className="flex items-center gap-2">
-                  {editingSearch ? (
-                    <>
-                      <input
-                        value={ebaySearchQuery}
-                        onChange={(e) => setEbaySearchQuery(e.target.value)}
-                        className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
-                      />
-                      <button onClick={() => setEditingSearch(false)} className="text-xs text-gray-500 hover:text-gray-700">Done</button>
-                      <a href={buildEbayUrl()} target="_blank" rel="noopener noreferrer"
-                        className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">
-                        Search eBay
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      <a href={buildEbayUrl()} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:underline flex-1 truncate">
-                        View sold listings for "{ebaySearchQuery}"
-                      </a>
-                      <button onClick={() => setEditingSearch(true)} className="text-gray-400 hover:text-gray-600" title="Edit search">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
+              {/* Sources — rich cards if available, plain URLs otherwise */}
+              {(() => {
+                const richSources = pricing.sources?.filter((s) => s.url);
+                const fallbackUrls = pricing.sourceUrls?.filter(Boolean);
+                if (richSources?.length) {
+                  return (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Sources</p>
+                      <ul className="space-y-2">
+                        {richSources.map((src, i) => (
+                          <li key={i}>
+                            <a href={src.url} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2.5 group rounded-lg hover:bg-gray-50 p-1 -mx-1 transition-colors">
+                              {src.imageUrl ? (
+                                <img
+                                  src={src.imageUrl}
+                                  alt=""
+                                  className="w-10 h-10 rounded object-cover flex-shrink-0 bg-gray-100 border border-gray-100"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                                  <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm text-gray-800 group-hover:text-blue-600 truncate leading-snug">
+                                  {src.price && <span className="font-semibold text-gray-900">${src.price} — </span>}
+                                  {src.title || new URL(src.url).hostname}
+                                </p>
+                                <p className="text-xs text-gray-400 truncate">{new URL(src.url).hostname}</p>
+                              </div>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                if (fallbackUrls?.length) {
+                  return (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Sources</p>
+                      <ul className="space-y-1">
+                        {fallbackUrls.slice(0, 4).map((url, i) => (
+                          <li key={i}>
+                            <a href={url} target="_blank" rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:underline truncate block max-w-xs">
+                              {new URL(url).hostname}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </>
           )}
 

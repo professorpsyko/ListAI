@@ -17,10 +17,18 @@ export interface IdentificationResult {
   error?: string;
 }
 
+export interface PricingSource {
+  url: string;
+  title: string;
+  imageUrl?: string;
+  price?: string;
+}
+
 export interface PricingResult {
   suggestedPrice: number;
   reasoning: string[];
   sourceUrls: string[];
+  sources?: PricingSource[];
   priceRange: { low: number; high: number };
 }
 
