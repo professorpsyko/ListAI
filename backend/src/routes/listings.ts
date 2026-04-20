@@ -3,7 +3,6 @@ import multer from 'multer';
 import { z } from 'zod';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
-import { imageQueue } from '../queues';
 import { researchPricing } from '../services/pricing';
 import { suggestShipping } from '../services/shipping';
 import { uploadToCloudinary, uploadEditedPhoto } from '../services/image';
@@ -13,7 +12,7 @@ import { upsertListingMemory } from '../services/rag';
 import { publishListing } from '../services/ebay';
 import { refreshAccessToken } from '../services/ebay-oauth';
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // Create listing
 router.post('/', requireAuth, async (req: Request, res: Response) => {
@@ -127,26 +126,37 @@ router.post(
     const newUrls = uploadResults.map((r) => r.url);
     const newPublicIds = uploadResults.map((r) => r.publicId);
 
-    // Append new URLs to the DB so downstream steps (identify, AI) can read them.
-    // The frontend manages its own display list and will PATCH imageUrls to the
-    // correct set whenever photos are added or removed.
+    const listingId = req.params.id;
+
+    // Append new URLs to the DB and mark as PROCESSING immediately
     await prisma.listing.update({
-      where: { id: req.params.id },
-      data: { imageUrls: [...listing.imageUrls, ...newUrls], imageJobStatus: 'QUEUED' },
+      where: { id: listingId },
+      data: { imageUrls: [...listing.imageUrls, ...newUrls], imageJobStatus: 'PROCESSING' },
     });
 
-    // Fire-and-forget: queue image processing without blocking the response
-    imageQueue.add('process-images', {
-      listingId: req.params.id,
-      publicIds: newPublicIds,
-    }).then((job) => {
-      console.log(`[upload] Image job queued: ${job.id}`);
-      prisma.listing.update({
-        where: { id: req.params.id },
-        data: { imageJobId: job.id ?? null },
-      }).catch((e) => console.error('[upload] Failed to save jobId:', e));
-    }).catch((e) => {
-      console.error('[upload] Failed to queue image job (Redis may be down):', e);
+    // Fire-and-forget: process images in the background without Redis/BullMQ
+    setImmediate(async () => {
+      try {
+        console.log(`[upload] Processing ${newPublicIds.length} image(s) for listing ${listingId}`);
+        const { processMultipleImages } = await import('../services/image');
+        const results = await processMultipleImages(newPublicIds);
+        const processedUrls = results.map((r) => r.processedUrl);
+        const failedCount = results.filter((r) => r.failed).length;
+        await prisma.listing.update({
+          where: { id: listingId },
+          data: {
+            processedImageUrls: processedUrls,
+            imageJobStatus: failedCount === results.length ? 'FAILED' : 'COMPLETE',
+          },
+        });
+        console.log(`[upload] Image processing done for ${listingId}. ${failedCount} failed, ${results.length - failedCount} succeeded.`);
+      } catch (err) {
+        console.error(`[upload] Image processing failed for ${listingId}:`, (err as Error).message);
+        await prisma.listing.update({
+          where: { id: listingId },
+          data: { imageJobStatus: 'FAILED' },
+        }).catch(console.error);
+      }
     });
 
     console.log('[upload] Responding with URLs');
