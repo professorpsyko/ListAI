@@ -45,6 +45,9 @@ export const updateListing = (id: string, data: Record<string, unknown>) =>
 export const getJobStatus = (id: string) =>
   api.get(`/listings/${id}/job-status`).then((r) => r.data);
 
+export const editPhoto = (id: string, dataUrl: string) =>
+  api.post(`/listings/${id}/photos/edit`, { dataUrl }).then((r) => r.data as { url: string });
+
 export const uploadPhotos = (id: string, files: File[]) => {
   const form = new FormData();
   files.forEach((f) => form.append('photos', f));

@@ -15,6 +15,15 @@ export interface ProcessedImage {
   error?: string;
 }
 
+export async function uploadEditedPhoto(dataUrl: string): Promise<{ url: string; publicId: string }> {
+  const result = await cloudinary.uploader.upload(dataUrl, {
+    folder: 'listai/edited',
+    resource_type: 'image',
+    timeout: 30000,
+  });
+  return { url: result.secure_url, publicId: result.public_id };
+}
+
 export async function uploadToCloudinary(input: string | Buffer): Promise<{ url: string; publicId: string }> {
   if (Buffer.isBuffer(input)) {
     // Upload from in-memory buffer via data URI
@@ -50,7 +59,9 @@ export async function processImage(publicId: string): Promise<ProcessedImage> {
   const transformation = [
     // Step 1: remove existing solid borders so the subject fills the frame
     { effect: 'trim' },
-    // Step 2: pad to square, centred on the AI-detected subject
+    // Step 2: auto-enhance colour balance, brightness & contrast (like iPhone magic wand)
+    { effect: 'improve' },
+    // Step 3: pad to a 1600×1600 square with white background, AI-centred subject
     {
       width: 1600,
       height: 1600,

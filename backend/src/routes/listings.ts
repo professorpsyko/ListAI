@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma';
 import { imageQueue } from '../queues';
 import { researchPricing } from '../services/pricing';
 import { suggestShipping } from '../services/shipping';
-import { uploadToCloudinary } from '../services/image';
+import { uploadToCloudinary, uploadEditedPhoto } from '../services/image';
 import { identifyItem } from '../services/vision';
 import { generateTitle, generateDescription } from '../services/listing-ai';
 import { upsertListingMemory } from '../services/rag';
@@ -154,6 +154,29 @@ router.post(
     res.json({ urls: newUrls });
   },
 );
+
+// Save an edited photo (canvas data URL → Cloudinary → return new URL)
+router.post('/:id/photos/edit', requireAuth, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const listing = await prisma.listing.findFirst({
+    where: { id: req.params.id, userId: auth.user.id },
+  });
+  if (!listing) { res.status(404).json({ error: 'Listing not found' }); return; }
+
+  const { dataUrl } = req.body as { dataUrl: string };
+  if (!dataUrl?.startsWith('data:')) {
+    res.status(400).json({ error: 'dataUrl is required' });
+    return;
+  }
+
+  try {
+    const { url } = await uploadEditedPhoto(dataUrl);
+    res.json({ url });
+  } catch (err) {
+    console.error('[photo-edit] Upload failed:', (err as Error).message);
+    res.status(500).json({ error: 'Failed to upload edited photo' });
+  }
+});
 
 // Get job status
 router.get('/:id/job-status', requireAuth, async (req: Request, res: Response) => {

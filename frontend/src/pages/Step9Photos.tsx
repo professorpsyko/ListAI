@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { useListingStore } from '../store/listingStore';
 import { updateListing } from '../lib/api';
 import { useStepAction } from '../hooks/useStepAction';
+import PhotoEditModal from '../components/PhotoEditModal';
 
 // ─── Sortable photo tile ──────────────────────────────────────────────────────
 
@@ -27,11 +28,13 @@ function SortablePhotoTile({
   index,
   isLabel,
   onRemove,
+  onEdit,
 }: {
   url: string;
   index: number;
   isLabel: boolean;
   onRemove: (url: string) => void;
+  onEdit: (url: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: url });
@@ -89,17 +92,29 @@ function SortablePhotoTile({
         </span>
       )}
 
-      {/* Remove button — shown on hover */}
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onRemove(url); }}
-        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
-        title="Remove photo"
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* Action buttons — shown on hover */}
+      <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(url); }}
+          className="w-6 h-6 rounded-full bg-black/50 hover:bg-blue-500 text-white flex items-center justify-center"
+          title="Edit photo"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(url); }}
+          className="w-6 h-6 rounded-full bg-black/50 hover:bg-red-500 text-white flex items-center justify-center"
+          title="Remove photo"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }
@@ -111,6 +126,7 @@ export default function Step9Photos() {
   const navigate = useNavigate();
   const store = useListingStore();
 
+  const [editingPhoto, setEditingPhoto] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const hasProcessed = store.processedPhotoUrls.length > 0;
   const isProcessing = store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED';
@@ -154,6 +170,11 @@ export default function Step9Photos() {
 
   function handleRemove(url: string) {
     setOrderedPhotos((arr) => arr.filter((u) => u !== url));
+  }
+
+  function handleEditSave(oldUrl: string, newUrl: string) {
+    setOrderedPhotos((arr) => arr.map((u) => (u === oldUrl ? newUrl : u)));
+    setEditingPhoto(null);
   }
 
   const canProceed = orderedPhotos.length >= 1;
@@ -242,6 +263,7 @@ export default function Step9Photos() {
                   index={i}
                   isLabel={url === labelUrl}
                   onRemove={handleRemove}
+                  onEdit={setEditingPhoto}
                 />
               ))}
             </div>
@@ -255,8 +277,18 @@ export default function Step9Photos() {
 
       {/* Hint */}
       <p className="text-xs text-gray-400">
-        Hover a photo to reveal the remove button · drag to reorder · first photo appears as the main eBay image
+        Hover a photo to reveal edit / remove buttons · drag to reorder · first photo is the main eBay image
       </p>
+
+      {/* Edit modal */}
+      {editingPhoto && id && (
+        <PhotoEditModal
+          photoUrl={editingPhoto}
+          listingId={id}
+          onSave={(newUrl) => handleEditSave(editingPhoto, newUrl)}
+          onClose={() => setEditingPhoto(null)}
+        />
+      )}
     </div>
   );
 }
