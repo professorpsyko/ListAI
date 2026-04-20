@@ -346,7 +346,9 @@ export async function publishListing(
       timeout: 30000,
     });
 
-    console.log('[eBay] Raw response (first 2000 chars):', String(resp.data).slice(0, 2000));
+    const rawStr = String(resp.data);
+    console.log('[eBay] Raw response length:', rawStr.length);
+    console.log('[eBay] Raw response FULL:', rawStr);
     const parsed = await parseStringPromise(resp.data, { explicitArray: false });
     return parsed.AddItemResponse as Record<string, unknown>;
   }
@@ -358,9 +360,11 @@ export async function publishListing(
     : [];
 
   // ── If eBay requires ConditionDescriptors, extract IDs from the error and retry ──
+  console.log('[eBay] First attempt errors:', JSON.stringify(allErrors, null, 2));
   const needs21920370 = allErrors.some((e) => String(e.ErrorCode) === '21920370');
   if (needs21920370 && !result.ItemID) {
     const descriptorError = allErrors.find((e) => String(e.ErrorCode) === '21920370')!;
+    console.log('[eBay] 21920370 full error object:', JSON.stringify(descriptorError, null, 2));
     const descriptorIds = extractDescriptorIds(descriptorError);
     console.log('[eBay] 21920370: extracted required descriptor IDs:', descriptorIds);
 
