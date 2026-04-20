@@ -85,7 +85,7 @@ export default function Step5Title() {
 
         {genError && (
           <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            ⚠ Could not generate title: {genError}. You can type your own below.
+            Could not generate title: {genError}. You can type your own below.
           </p>
         )}
 

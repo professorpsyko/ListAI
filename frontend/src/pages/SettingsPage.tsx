@@ -47,7 +47,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const ebayParam = searchParams.get('ebay');
     if (ebayParam === 'connected') {
-      setEbayFeedback({ type: 'success', message: '✓ eBay account connected! You can now publish listings.' });
+      setEbayFeedback({ type: 'success', message: 'eBay account connected! You can now publish listings.' });
       refetchEbay();
       setSearchParams({}, { replace: true });
     } else if (ebayParam === 'error') {
@@ -205,7 +205,7 @@ export default function SettingsPage() {
                   >
                     {savePoliciesMut.isPending ? 'Saving…' : 'Save Policy IDs'}
                   </button>
-                  {policySaved && <span className="text-sm text-green-600">✓ Saved</span>}
+                  {policySaved && <span className="text-sm text-green-600">Saved</span>}
                 </div>
               </div>
             </div>

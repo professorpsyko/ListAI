@@ -300,22 +300,21 @@ export default function Step4Pricing() {
           <div className="grid grid-cols-3 gap-2">
             {(
               [
-                { value: 'BUY_IT_NOW', label: 'Buy It Now', icon: '🏷️' },
-                { value: 'AUCTION',    label: 'Auction',    icon: '🔨' },
-                { value: 'AUCTION_BIN', label: 'Auction + BIN', icon: '🔨🏷️' },
+                { value: 'BUY_IT_NOW',  label: 'Buy It Now' },
+                { value: 'AUCTION',     label: 'Auction' },
+                { value: 'AUCTION_BIN', label: 'Auction + BIN' },
               ] as const
-            ).map(({ value, label, icon }) => (
+            ).map(({ value, label }) => (
               <button
                 key={value}
                 onClick={() => store.setListingType(value)}
                 className={clsx(
-                  'flex flex-col items-center gap-1 rounded-xl border-2 py-3 px-2 text-xs font-medium transition-colors',
+                  'rounded-xl border-2 py-3 px-2 text-xs font-medium transition-colors text-center',
                   store.listingType === value
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50',
                 )}
               >
-                <span className="text-lg leading-none">{icon}</span>
                 {label}
               </button>
             ))}

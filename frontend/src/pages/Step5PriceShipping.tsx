@@ -271,20 +271,19 @@ export default function Step5PriceShipping() {
           {/* Type selector */}
           <div className="grid grid-cols-3 gap-1.5">
             {([
-              { value: 'BUY_IT_NOW', label: 'Buy It Now', icon: '🏷️' },
-              { value: 'AUCTION',    label: 'Auction',    icon: '🔨' },
-              { value: 'AUCTION_BIN', label: 'Auction + BIN', icon: '🔨🏷️' },
-            ] as const).map(({ value, label, icon }) => (
+              { value: 'BUY_IT_NOW',  label: 'Buy It Now' },
+              { value: 'AUCTION',     label: 'Auction' },
+              { value: 'AUCTION_BIN', label: 'Auction + BIN' },
+            ] as const).map(({ value, label }) => (
               <button key={value} onClick={() => store.setListingType(value)}
                 className={clsx(
-                  'flex flex-col items-center gap-0.5 rounded-xl border-2 py-2.5 px-1 text-xs font-medium transition-colors',
+                  'rounded-xl border-2 py-2.5 px-1 text-xs font-medium transition-colors text-center',
                   store.listingType === value
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
                 )}
               >
-                <span className="text-base leading-none">{icon}</span>
-                <span className="text-center leading-tight">{label}</span>
+                {label}
               </button>
             ))}
           </div>

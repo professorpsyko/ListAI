@@ -494,7 +494,7 @@ export default function Step8Preview() {
   const isCurrentlyPublishing = showConfirm && publishStage !== 'idle' && publishStage !== 'error';
 
   useStepAction(
-    isPublished ? '✓ Published!' : (isCurrentlyPublishing ? 'Publishing…' : '🚀 Publish to eBay'),
+    isPublished ? 'Published!' : (isCurrentlyPublishing ? 'Publishing…' : 'Publish to eBay'),
     isCurrentlyPublishing,
     isPublished ? () => {} : () => setShowConfirm(true),
     isPublished
@@ -578,7 +578,7 @@ export default function Step8Preview() {
                 'text-lg font-bold',
                 publishStage === 'success' ? 'text-green-700' : 'text-gray-900',
               )}>
-                {publishStage === 'success' ? '🎉 Your listing is live!' : 'Publishing to eBay…'}
+                {publishStage === 'success' ? 'Your listing is live!' : 'Publishing to eBay…'}
               </h3>
 
               <div className="space-y-4">
