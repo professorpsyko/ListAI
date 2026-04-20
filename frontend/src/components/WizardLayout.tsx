@@ -66,51 +66,13 @@ export default function WizardLayout() {
   return (
     <StepActionContext.Provider value={{ setAction: setStepAction }}>
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Top nav */}
+      {/* Top nav — two rows: brand bar + step bar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
+        {/* Row 1: logo + settings/user */}
+        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-12 border-b border-gray-100">
           <Link to="/dashboard">
-            <img src="/logo.png" alt="ListSamurAI" className="h-8 w-auto" />
+            <img src="/logo.png" alt="ListSamurAI" className="h-7 w-auto" />
           </Link>
-
-          {/* Step progress — compact: only active step shows label */}
-          <nav className="flex items-center gap-0.5">
-            {STEPS.map((step, idx) => {
-              const done = isStepComplete(step.n, store);
-              const active = currentStep === step.n;
-
-              return (
-                <div key={step.n} className="flex items-center">
-                  <button
-                    onClick={() => goToStep(step.n)}
-                    title={step.label}
-                    className={clsx(
-                      'flex items-center gap-1 rounded-full font-medium transition-colors',
-                      active
-                        ? 'bg-blue-600 text-white px-3 py-1 text-sm'
-                        : 'w-7 h-7 justify-center text-xs hover:bg-gray-100',
-                      !active && done && 'text-green-600',
-                      !active && !done && 'text-gray-400',
-                    )}
-                  >
-                    {done && !active ? (
-                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    ) : (
-                      <span>{active ? `${step.n}  ${step.label}` : step.n}</span>
-                    )}
-                  </button>
-                  {idx < STEPS.length - 1 && (
-                    <svg className="w-2.5 h-2.5 text-gray-200 mx-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
-
           <div className="flex items-center gap-3">
             <Link to="/settings" className="text-gray-500 hover:text-gray-700" title="Settings">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,11 +83,51 @@ export default function WizardLayout() {
             <UserButton afterSignOutUrl="/sign-in" />
           </div>
         </div>
+
+        {/* Row 2: step navigation — all labels always visible */}
+        <div className="max-w-6xl mx-auto px-6">
+          <nav className="flex items-center justify-center gap-0.5 h-10">
+            {STEPS.map((step, idx) => {
+              const done = isStepComplete(step.n, store);
+              const active = currentStep === step.n;
+
+              return (
+                <div key={step.n} className="flex items-center">
+                  <button
+                    onClick={() => goToStep(step.n)}
+                    className={clsx(
+                      'flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap',
+                      active && 'bg-blue-600 text-white',
+                      !active && done && 'text-green-600 hover:bg-green-50',
+                      !active && !done && 'text-gray-400 hover:bg-gray-100',
+                    )}
+                  >
+                    {done && !active ? (
+                      <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <span className={clsx('font-semibold', active ? 'text-white' : done ? 'text-green-500' : 'text-gray-300')}>
+                        {step.n}
+                      </span>
+                    )}
+                    <span>{step.label}</span>
+                  </button>
+                  {idx < STEPS.length - 1 && (
+                    <svg className="w-2 h-2 text-gray-200 mx-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
       </header>
 
-      {/* Step action bar — sticky below header, populated by each step */}
+      {/* Step action bar — sticky below header (row1 48px + row2 40px = 88px) */}
       {stepAction && (
-        <div className="sticky top-14 z-10 bg-white border-b border-gray-100 shadow-sm">
+        <div className="sticky top-[88px] z-10 bg-white border-b border-gray-100 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-2.5 flex justify-end">
             <button
               onClick={stepAction.onClick}
