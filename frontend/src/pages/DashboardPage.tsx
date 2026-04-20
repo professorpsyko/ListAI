@@ -1,6 +1,4 @@
 import { useNavigate } from 'react-router-dom';
-import { UserButton } from '@clerk/clerk-react';
-import { Link } from 'react-router-dom';
 import { createListing } from '../lib/api';
 import { useListingStore } from '../store/listingStore';
 
@@ -17,18 +15,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
-          <img src="/logo.png" alt="ListSamurAI" className="h-8 w-auto" />
-          <div className="flex items-center gap-3">
-            <Link to="/settings" className="text-sm text-gray-500 hover:text-gray-700">Settings</Link>
-            <UserButton afterSignOutUrl="/sign-in" />
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+    <div className="p-8">
+      <div className="max-w-3xl mx-auto py-20 text-center">
         <h1 className="text-4xl font-bold text-gray-900 mb-3">eBay listings in minutes</h1>
         <p className="text-lg text-gray-500 mb-10">
           Upload photos, let AI do the work, publish to eBay.

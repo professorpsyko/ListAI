@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { SignIn, SignUp, useAuth, useUser } from '@clerk/clerk-react';
 import { syncEmail, registerTokenGetter } from './lib/api';
 
+import AppLayout from './components/AppLayout';
 import WizardLayout from './components/WizardLayout';
 import Step1Photos from './pages/Step1Photos';
 import Step2Identify from './pages/Step2Identify';
@@ -14,6 +15,10 @@ import Step7Photos from './pages/Step9Photos';
 import Step8Preview from './pages/Step8Preview';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
+import ListingsPage from './pages/ListingsPage';
+import OffersPage from './pages/OffersPage';
+import CatalogPage from './pages/CatalogPage';
+import SegmentsPage from './pages/SegmentsPage';
 
 function AuthSync() {
   const { isSignedIn, getToken } = useAuth();
@@ -64,8 +69,16 @@ export default function App() {
 
         <Route path="/" element={<RequireAuth><Navigate to="/dashboard" replace /></RequireAuth>} />
 
-        <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
-        <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
+        {/* App shell — sidebar layout */}
+        <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/listings/:tab" element={<ListingsPage />} />
+          <Route path="/listings" element={<Navigate to="/listings/active" replace />} />
+          <Route path="/offers" element={<OffersPage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/segments" element={<SegmentsPage />} />
+        </Route>
 
         <Route path="/listing/:id" element={<RequireAuth><WizardLayout /></RequireAuth>}>
           <Route path="step/1" element={<Step1Photos />} />
