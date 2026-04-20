@@ -19,7 +19,8 @@ const STEPS = [
   { n: 6, label: 'Title' },
   { n: 7, label: 'Description' },
   { n: 8, label: 'Shipping' },
-  { n: 9, label: 'Preview' },
+  { n: 9, label: 'Photos' },
+  { n: 10, label: 'Preview' },
 ];
 
 // Which fields mark a step as complete
@@ -33,6 +34,7 @@ function isStepComplete(step: number, s: ReturnType<typeof useListingStore.getSt
     case 6: return !!s.itemTitle;
     case 7: return !!s.itemDescription;
     case 8: return !!s.shippingService;
+    case 9: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
     default: return false;
   }
 }

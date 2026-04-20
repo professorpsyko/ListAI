@@ -13,10 +13,11 @@ const STEPS = [
   { n: 6, label: 'Title' },
   { n: 7, label: 'Description' },
   { n: 8, label: 'Shipping' },
-  { n: 9, label: 'Preview' },
+  { n: 9, label: 'Photos' },
+  { n: 10, label: 'Preview' },
 ] as const;
 
-type StepN = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+type StepN = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export default function DevPanel() {
   const { id } = useParams<{ id: string }>();
