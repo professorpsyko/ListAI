@@ -42,34 +42,36 @@ export async function processImage(publicId: string): Promise<ProcessedImage> {
   // - pad to center subject on white background
   // - 1600x1600 max
   // - JPEG 85% quality
+  // Transformation pipeline:
+  //  1. Trim any existing solid border/whitespace from the original photo
+  //  2. Pad to a 1600×1600 square with a white background, using AI gravity
+  //     so the detected subject is centred rather than the raw image canvas
+  //  3. 85% JPEG quality
+  const transformation = [
+    // Step 1: remove existing solid borders so the subject fills the frame
+    { effect: 'trim' },
+    // Step 2: pad to square, centred on the AI-detected subject
+    {
+      width: 1600,
+      height: 1600,
+      crop: 'pad',
+      gravity: 'auto',
+      background: 'white',
+      quality: 85,
+      fetch_format: 'jpg',
+    },
+  ];
+
   try {
     const processedUrl = cloudinary.url(publicId, {
-      transformation: [
-        {
-          width: 1600,
-          height: 1600,
-          crop: 'pad',
-          background: 'white',
-          quality: 85,
-          fetch_format: 'jpg',
-        },
-      ],
+      transformation,
       secure: true,
     });
 
     // Eagerly generate the transformed URL (creates it in Cloudinary CDN)
     await cloudinary.uploader.explicit(publicId, {
       type: 'upload',
-      eager: [
-        {
-          width: 1600,
-          height: 1600,
-          crop: 'pad',
-          background: 'white',
-          quality: 85,
-          fetch_format: 'jpg',
-        },
-      ],
+      eager: transformation,
     });
 
     return {
