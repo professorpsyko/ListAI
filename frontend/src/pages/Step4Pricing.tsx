@@ -119,11 +119,21 @@ export default function Step4Pricing() {
 
   const { pct, text } = usePricingProgress(isLoading);
 
-  useStepAction('Next: Title \u2192', !store.finalPrice, handleNext);
+  const needsBIN = store.listingType === 'BUY_IT_NOW' || store.listingType === 'AUCTION_BIN';
+  const needsBid = store.listingType === 'AUCTION' || store.listingType === 'AUCTION_BIN';
+  const canProceed = (!needsBIN || !!store.finalPrice) && (!needsBid || !!store.startingBid);
+
+  useStepAction('Next: Title \u2192', !canProceed, handleNext);
 
   async function handleNext() {
-    if (!id || !store.finalPrice) return;
-    await updateListing(id, { finalPrice: parseFloat(store.finalPrice), suggestedPrice: pricing?.suggestedPrice });
+    if (!id || !canProceed) return;
+    await updateListing(id, {
+      finalPrice: store.finalPrice ? parseFloat(store.finalPrice) : undefined,
+      suggestedPrice: pricing?.suggestedPrice,
+      listingType: store.listingType,
+      startingBid: store.startingBid ? parseFloat(store.startingBid) : undefined,
+      auctionDuration: store.auctionDuration,
+    });
     store.setCurrentStep(6);
     navigate(`/listing/${id}/step/6`);
   }
@@ -282,37 +292,132 @@ export default function Step4Pricing() {
           )}
         </div>
 
-        {/* Right — price input */}
-        <div className="space-y-4">
-          <h3 className="font-semibold text-gray-700">Your listing price</h3>
-          <div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={store.finalPrice}
-                onChange={(e) => store.setFinalPrice(e.target.value)}
-                placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-7 pr-4 py-3 text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            {pricing && !store.finalPrice && (
-              <p className="text-sm text-gray-400 mt-1.5">Suggested: ${pricing.suggestedPrice.toFixed(2)}</p>
-            )}
-            {(isLoading || isQueuing) && !store.finalPrice && (
-              <p className="text-sm text-gray-400 mt-1.5">Research in progress — or enter a price now</p>
-            )}
+        {/* Right — listing type + price inputs */}
+        <div className="space-y-5">
+          <h3 className="font-semibold text-gray-700">Listing type</h3>
+
+          {/* Type selector */}
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                { value: 'BUY_IT_NOW', label: 'Buy It Now', icon: '🏷️' },
+                { value: 'AUCTION',    label: 'Auction',    icon: '🔨' },
+                { value: 'AUCTION_BIN', label: 'Auction + BIN', icon: '🔨🏷️' },
+              ] as const
+            ).map(({ value, label, icon }) => (
+              <button
+                key={value}
+                onClick={() => store.setListingType(value)}
+                className={clsx(
+                  'flex flex-col items-center gap-1 rounded-xl border-2 py-3 px-2 text-xs font-medium transition-colors',
+                  store.listingType === value
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50',
+                )}
+              >
+                <span className="text-lg leading-none">{icon}</span>
+                {label}
+              </button>
+            ))}
           </div>
 
-          {pricing && (
-            <button
-              onClick={() => store.setFinalPrice(String(pricing.suggestedPrice))}
-              className={clsx('text-sm text-blue-600 hover:underline')}
-            >
-              Use suggested price (${pricing.suggestedPrice.toFixed(2)})
-            </button>
+          {/* Buy It Now price */}
+          {(store.listingType === 'BUY_IT_NOW' || store.listingType === 'AUCTION_BIN') && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Buy It Now price
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={store.finalPrice}
+                  onChange={(e) => store.setFinalPrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg pl-7 pr-4 py-2.5 text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              {pricing && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-400">
+                    Suggested: <span className="font-medium text-gray-600">${pricing.suggestedPrice.toFixed(2)}</span>
+                    {pricing.priceRange && (
+                      <span className="ml-1 text-gray-400">(range ${pricing.priceRange.low}–${pricing.priceRange.high})</span>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => store.setFinalPrice(String(pricing.suggestedPrice))}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Use suggested
+                  </button>
+                </div>
+              )}
+              {(isLoading || isQueuing) && !store.finalPrice && (
+                <p className="text-xs text-gray-400">Research in progress — or enter a price now</p>
+              )}
+            </div>
+          )}
+
+          {/* Auction starting bid */}
+          {(store.listingType === 'AUCTION' || store.listingType === 'AUCTION_BIN') && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Starting bid
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={store.startingBid}
+                  onChange={(e) => store.setStartingBid(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg pl-7 pr-4 py-2.5 text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              {pricing && (() => {
+                const recommended = pricing.priceRange?.low
+                  ? pricing.priceRange.low
+                  : Math.round(pricing.suggestedPrice * 0.65 * 100) / 100;
+                return (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-400">
+                      Suggested start: <span className="font-medium text-gray-600">${recommended.toFixed(2)}</span>
+                      <span className="ml-1 text-gray-400">(low end of range)</span>
+                    </p>
+                    <button
+                      onClick={() => store.setStartingBid(String(recommended))}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      Use suggested
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Auction duration */}
+          {(store.listingType === 'AUCTION' || store.listingType === 'AUCTION_BIN') && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Auction duration</label>
+              <div className="flex gap-2">
+                {[1, 3, 5, 7, 10].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => store.setAuctionDuration(d)}
+                    className={clsx(
+                      'flex-1 py-1.5 rounded-lg border text-sm font-medium transition-colors',
+                      store.auctionDuration === d
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                    )}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>

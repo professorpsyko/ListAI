@@ -90,7 +90,7 @@ export interface ListingState {
   shippingSuggestionStatus: 'PENDING' | 'LOADING' | 'COMPLETE' | 'FAILED';
 
   // Step 8 — Listing type
-  listingType: 'BUY_IT_NOW' | 'AUCTION';
+  listingType: 'BUY_IT_NOW' | 'AUCTION' | 'AUCTION_BIN';
   auctionDuration: number;
   startingBid: string;
 
@@ -125,7 +125,7 @@ export interface ListingState {
   setReturnWindow: (v: number) => void;
   setShippingSuggestion: (v: ListingState['shippingSuggestion']) => void;
   setShippingSuggestionStatus: (v: ListingState['shippingSuggestionStatus']) => void;
-  setListingType: (v: 'BUY_IT_NOW' | 'AUCTION') => void;
+  setListingType: (v: 'BUY_IT_NOW' | 'AUCTION' | 'AUCTION_BIN') => void;
   setAuctionDuration: (v: number) => void;
   setStartingBid: (v: string) => void;
   setCurrentStep: (n: number) => void;
