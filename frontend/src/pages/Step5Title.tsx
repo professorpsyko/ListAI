@@ -11,6 +11,7 @@ export default function Step5Title() {
   const store = useListingStore();
 
   const [loading, setLoading] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const [showReasoning, setShowReasoning] = useState(false);
 
   const charCount = store.itemTitle.length;
@@ -30,6 +31,7 @@ export default function Step5Title() {
   async function handleGenerate() {
     if (!id) return;
     setLoading(true);
+    setGenError(null);
     try {
       const { title } = await generateTitle(id);
       store.setTitleSuggestion(title);
@@ -37,8 +39,11 @@ export default function Step5Title() {
       if (!store.itemTitle) {
         store.setItemTitle(title);
       }
-    } catch {
-      // ignore — user can type their own
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } }; message?: string })
+        ?.response?.data?.detail || (err as Error)?.message || 'Generation failed';
+      setGenError(msg);
+      console.error('[Step5Title] generateTitle error:', err);
     } finally {
       setLoading(false);
     }
@@ -77,6 +82,12 @@ export default function Step5Title() {
             {charCount}/80
           </span>
         </div>
+
+        {genError && (
+          <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            ⚠ Could not generate title: {genError}. You can type your own below.
+          </p>
+        )}
 
         <div className="flex items-center gap-3">
           <button

@@ -18,9 +18,14 @@ interface ListingContext {
 export async function generateTitle(userId: string, ctx: ListingContext): Promise<string> {
   const start = Date.now();
 
-  // Retrieve past titles from RAG
-  const similar = await retrieveSimilarListings(userId, `${ctx.identification} ${ctx.category}`, 5);
-  const pastTitles = similar.map((s) => `- ${s.title}`).join('\n') || '(no past titles yet)';
+  // Retrieve past titles from RAG — if unavailable, continue without them
+  let pastTitles = '(no past titles yet)';
+  try {
+    const similar = await retrieveSimilarListings(userId, `${ctx.identification} ${ctx.category}`, 5);
+    if (similar.length) pastTitles = similar.map((s) => `- ${s.title}`).join('\n');
+  } catch (ragErr) {
+    console.warn('[ListingAI/title] RAG unavailable, continuing without past titles:', (ragErr as Error).message);
+  }
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5-20250929',
@@ -58,8 +63,14 @@ Return ONLY the title, nothing else. Under 80 characters.`,
 export async function generateDescription(userId: string, ctx: ListingContext): Promise<string> {
   const start = Date.now();
 
-  const similar = await retrieveSimilarListings(userId, `${ctx.identification} ${ctx.category}`, 5);
-  const pastDescriptions = similar.map((s) => `---\n${s.description}`).join('\n') || '(no past descriptions yet)';
+  // Retrieve past descriptions from RAG — if unavailable, continue without them
+  let pastDescriptions = '(no past descriptions yet)';
+  try {
+    const similar = await retrieveSimilarListings(userId, `${ctx.identification} ${ctx.category}`, 5);
+    if (similar.length) pastDescriptions = similar.map((s) => `---\n${s.description}`).join('\n');
+  } catch (ragErr) {
+    console.warn('[ListingAI/description] RAG unavailable, continuing without past descriptions:', (ragErr as Error).message);
+  }
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5-20250929',

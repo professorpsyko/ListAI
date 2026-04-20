@@ -400,18 +400,22 @@ router.post('/:id/generate-title', requireAuth, async (req: Request, res: Respon
   }
 
   const identification = listing.rawIdentification as Record<string, string> | null;
-  const title = await generateTitle(auth.user.id, {
-    identification: identification?.identification || listing.itemTitle || '',
-    brand: identification?.brand || '',
-    model: identification?.model || '',
-    condition: listing.itemCondition || '',
-    color: listing.itemColor || '',
-    serialNumber: identification?.serialNumber || null,
-    specialNotes: listing.specialNotes || '',
-    category: listing.itemCategory || '',
-  });
-
-  res.json({ title });
+  try {
+    const title = await generateTitle(auth.user.id, {
+      identification: identification?.identification || listing.itemTitle || '',
+      brand: identification?.brand || '',
+      model: identification?.model || '',
+      condition: listing.itemCondition || '',
+      color: listing.itemColor || '',
+      serialNumber: identification?.serialNumber || null,
+      specialNotes: listing.specialNotes || '',
+      category: listing.itemCategory || '',
+    });
+    res.json({ title });
+  } catch (err) {
+    console.error('[generate-title] Failed:', (err as Error).message);
+    res.status(500).json({ error: 'Title generation failed', detail: (err as Error).message });
+  }
 });
 
 // Generate description
@@ -426,18 +430,22 @@ router.post('/:id/generate-description', requireAuth, async (req: Request, res: 
   }
 
   const identification = listing.rawIdentification as Record<string, string> | null;
-  const description = await generateDescription(auth.user.id, {
-    identification: identification?.identification || listing.itemTitle || '',
-    brand: identification?.brand || '',
-    model: identification?.model || '',
-    condition: listing.itemCondition || '',
-    color: listing.itemColor || '',
-    serialNumber: identification?.serialNumber || null,
-    specialNotes: listing.specialNotes || '',
-    category: listing.itemCategory || '',
-  });
-
-  res.json({ description });
+  try {
+    const description = await generateDescription(auth.user.id, {
+      identification: identification?.identification || listing.itemTitle || '',
+      brand: identification?.brand || '',
+      model: identification?.model || '',
+      condition: listing.itemCondition || '',
+      color: listing.itemColor || '',
+      serialNumber: identification?.serialNumber || null,
+      specialNotes: listing.specialNotes || '',
+      category: listing.itemCategory || '',
+    });
+    res.json({ description });
+  } catch (err) {
+    console.error('[generate-description] Failed:', (err as Error).message);
+    res.status(500).json({ error: 'Description generation failed', detail: (err as Error).message });
+  }
 });
 
 // Publish to eBay
