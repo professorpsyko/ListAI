@@ -49,16 +49,16 @@ export default function App() {
       <Routes>
         <Route path="/sign-in/*" element={
           <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-            <div className="mb-6 text-2xl font-bold tracking-tight">
-              <span className="text-gray-900">ListSamur</span><span className="text-blue-500">ai</span>
+            <div className="mb-8">
+              <img src="/logo.png" alt="ListSamurAI" className="h-20 w-auto" />
             </div>
             <SignIn routing="path" path="/sign-in" />
           </div>
         } />
         <Route path="/sign-up/*" element={
           <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-            <div className="mb-6 text-2xl font-bold tracking-tight">
-              <span className="text-gray-900">ListSamur</span><span className="text-blue-500">ai</span>
+            <div className="mb-8">
+              <img src="/logo.png" alt="ListSamurAI" className="h-20 w-auto" />
             </div>
             <SignUp routing="path" path="/sign-up" />
           </div>
