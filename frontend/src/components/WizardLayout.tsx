@@ -17,7 +17,7 @@ const STEPS = [
   { n: 4, label: 'Details' },
   { n: 5, label: 'Price & Ship' },
   { n: 6, label: 'Title & Desc' },
-  { n: 7, label: 'Photos' },
+  { n: 7, label: 'Photo Check' },
   { n: 8, label: 'Preview' },
 ];
 
@@ -30,7 +30,7 @@ function isStepComplete(step: number, s: ReturnType<typeof useListingStore.getSt
     case 4: return !!s.condition;
     case 5: return (!!s.finalPrice || !!s.startingBid) && !!s.shippingService;
     case 6: return !!s.itemTitle && !!s.itemDescription;
-    case 7: return s.itemPhotoUrls.length >= 1 || s.processedPhotoUrls.length >= 1;
+    case 7: return s.currentStep > 7; // only done once user has advanced past this step
     default: return false;
   }
 }
