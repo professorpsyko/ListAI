@@ -1,5 +1,5 @@
-# Proxy /api/* to the Railway backend (replaces Vercel rewrites)
-/api/* https://listai-production-cd9f.up.railway.app/api/:splat 200
+# API proxy is handled by functions/api/[[path]].ts (Pages Function).
+# Leave only SPA fallback here.
 
-# SPA fallback — any client-side route serves index.html
+# SPA fallback — any non-file client-side route serves index.html
 /* /index.html 200
