@@ -297,6 +297,19 @@ export default function Step9Photos() {
     ? orderedPhotos.map((url) => (url === labelUrl ? url : (procToOrig.get(url) ?? url)))
     : orderedPhotos;
 
+  // ── DEBUG (remove before ship) ────────────────────────────────────────────
+  console.group('[Step9] Photo toggle debug');
+  console.log('showOriginal:', showOriginal);
+  console.log('store.itemPhotoUrls:', store.itemPhotoUrls);
+  console.log('store.processedPhotoUrls:', store.processedPhotoUrls);
+  console.log('processedItemUrls (after filtering label):', processedItemUrls);
+  console.log('labelUrl:', labelUrl);
+  console.log('orderedPhotos:', orderedPhotos);
+  console.log('procToOrig entries:', [...procToOrig.entries()]);
+  console.log('displayPhotos:', displayPhotos);
+  console.groupEnd();
+  // ── END DEBUG ─────────────────────────────────────────────────────────────
+
   // ── Apply master adjustments to all item photos ──────────────────────────
 
   const applyMasterToAll = useCallback(async () => {
