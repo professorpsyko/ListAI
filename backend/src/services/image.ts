@@ -47,38 +47,35 @@ export async function uploadToCloudinary(input: string | Buffer): Promise<{ url:
 }
 
 export async function processImage(publicId: string): Promise<ProcessedImage> {
-  // Transformation pipeline:
+  // Transformation pipeline (applied as a single chained eager version):
   //  1. Trim near-white/solid-colour borders (fuzz 15 handles off-white backgrounds)
   //  2. Auto-enhance colour, brightness & contrast
   //  3. Pad to 1600×1600 square, pure-white background, subject centred
-  //     gravity:'center' is correct for pad — it places the trimmed content dead-centre
-  //     rather than 'auto' which is designed for crop (not pad) and can shift the subject
-  const transformation = [
-    { effect: 'trim:15' },
-    { effect: 'improve' },
-    {
-      width: 1600,
-      height: 1600,
-      crop: 'pad',
-      gravity: 'center',
-      background: 'white',
-      quality: 90,
-      fetch_format: 'jpg',
-    },
-  ];
+  //
+  // IMPORTANT: pass the transformation as a URL string, not an array.
+  // Passing an array to `eager` creates one *separate* eager version per element
+  // (eager[0]=trim, eager[1]=improve, eager[2]=pad), so we'd only ever use the trim result.
+  // A string with slashes creates ONE eagerly-generated version with ALL steps chained.
+  const eagerString = 'e_trim:15/e_improve/w_1600,h_1600,c_pad,g_center,b_white,q_90,f_jpg';
 
   try {
-    // Eagerly bake the transformation and use the URL returned in the response
-    // (avoids any mismatch between cloudinary.url() formula and what CDN computed)
+    // Eagerly bake the full transformation chain and use the URL returned in the response
     const result = await cloudinary.uploader.explicit(publicId, {
       type: 'upload',
-      eager: transformation,
+      eager: eagerString,
     });
 
     const eagerUrl: string | undefined = result.eager?.[0]?.secure_url;
     // Fall back to formula URL if eager result is missing (shouldn't happen)
-    const processedUrl = eagerUrl ?? cloudinary.url(publicId, { transformation, secure: true });
-    console.log(`[image] Processed ${publicId} → ${eagerUrl ? 'eager URL' : 'formula URL'}`);
+    const processedUrl = eagerUrl ?? cloudinary.url(publicId, {
+      transformation: [
+        { effect: 'trim:15' },
+        { effect: 'improve' },
+        { width: 1600, height: 1600, crop: 'pad', gravity: 'center', background: 'white', quality: 90, fetch_format: 'jpg' },
+      ],
+      secure: true,
+    });
+    console.log(`[image] Processed ${publicId} → ${eagerUrl ? 'eager URL' : 'formula URL'}: ${processedUrl}`);
     return {
       originalUrl: cloudinary.url(publicId, { secure: true }),
       processedUrl,
