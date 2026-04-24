@@ -91,6 +91,7 @@ function MiniSlider({
 
 function SortablePhotoTile({
   url,
+  displayUrl,
   index,
   isLabel,
   masterFilter,
@@ -98,6 +99,7 @@ function SortablePhotoTile({
   onEdit,
 }: {
   url: string;
+  displayUrl?: string;
   index: number;
   isLabel: boolean;
   masterFilter: string;
@@ -115,6 +117,8 @@ function SortablePhotoTile({
   };
 
   const isMain = index === 0;
+  // displayUrl is used for the visible image; url is the stable DnD id (canonical processed URL)
+  const imgSrc = displayUrl ?? url;
 
   return (
     <div
@@ -129,7 +133,7 @@ function SortablePhotoTile({
       <div {...attributes} {...listeners} className="absolute inset-0 cursor-grab active:cursor-grabbing z-10" />
 
       <img
-        src={url}
+        src={imgSrc}
         alt={isLabel ? 'Tag / serial' : `Photo ${index + 1}`}
         draggable={false}
         className="w-full h-full object-cover"
@@ -232,24 +236,39 @@ export default function Step9Photos() {
 
   const labelUrl = store.labelPhotoUrl;
 
-  function buildOrderedPhotos(itemUrls: string[], processedUrls: string[]): string[] {
-    // processedUrls contains ONLY processed item photos — the label is never sent through
-    // background processing (it's uploaded with ?label=true and skips the Cloudinary pipeline).
-    // So the arrays are already in sync: processedUrls[i] is the processed version of itemUrls[i].
-    if (!showOriginal && hasProcessed && processedUrls.length) {
-      return labelUrl ? [...processedUrls, labelUrl] : processedUrls;
-    }
-    return labelUrl ? [...itemUrls, labelUrl] : itemUrls;
-  }
+  // orderedPhotos is the canonical order — always keyed on processed URLs (or originals if
+  // processing hasn't completed yet).  The toggle NEVER changes this array; it only controls
+  // which version (processed vs original) is shown for each slot.
+  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() => {
+    const base = store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls;
+    return labelUrl ? [...base, labelUrl] : base;
+  });
 
-  const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() =>
-    buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls),
+  // When processed photos arrive from the background job, switch the canonical order to
+  // processed URLs.  This fires once (processedPhotoUrls.length grows from 0 → N).
+  useEffect(() => {
+    if (!store.processedPhotoUrls.length) return;
+    setOrderedPhotos((prev) => {
+      // If we already have processed URLs in the list, keep user's drag order
+      const alreadyProcessed = prev.some((u) => u !== labelUrl && store.processedPhotoUrls.includes(u));
+      if (alreadyProcessed) return prev;
+      // Otherwise swap in the processed URLs in the same relative order as the originals
+      const base = store.processedPhotoUrls;
+      return labelUrl ? [...base, labelUrl] : base;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.processedPhotoUrls.length]);
+
+  // Map processed URL → original URL for display-only toggling
+  const procToOrig = new Map(
+    store.processedPhotoUrls.map((proc, i) => [proc, store.itemPhotoUrls[i] ?? proc]),
   );
 
-  useEffect(() => {
-    setOrderedPhotos(buildOrderedPhotos(store.itemPhotoUrls, store.processedPhotoUrls));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.processedPhotoUrls.length, showOriginal]);
+  // displayPhotos is what the grid renders.  orderedPhotos never changes on toggle —
+  // only the display changes.
+  const displayPhotos = showOriginal
+    ? orderedPhotos.map((url) => (url === labelUrl ? url : (procToOrig.get(url) ?? url)))
+    : orderedPhotos;
 
   // ── Apply master adjustments to all item photos ──────────────────────────
 
@@ -452,6 +471,7 @@ export default function Step9Photos() {
                 <SortablePhotoTile
                   key={url}
                   url={url}
+                  displayUrl={displayPhotos[i]}
                   index={i}
                   isLabel={url === labelUrl}
                   masterFilter={masterFilter}
