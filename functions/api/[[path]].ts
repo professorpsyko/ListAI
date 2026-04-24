@@ -9,9 +9,12 @@ export const onRequest: PagesFunction = async ({ request, params }) => {
   const backendPath = '/api/' + pathSegments.join('/')
   const target = BACKEND_ORIGIN + backendPath + url.search
 
-  // Clone headers, strip hop-by-hop + host
+  // Clone headers, strip hop-by-hop + host + origin
+  // This is a server-side proxy — the browser's Origin header is irrelevant to the backend
+  // and was triggering CORS rejection since the backend only allowed .vercel.app domains.
   const headers = new Headers(request.headers)
   headers.delete('host')
+  headers.delete('origin')
   headers.delete('cf-connecting-ip')
   headers.delete('cf-ray')
   headers.delete('cf-visitor')

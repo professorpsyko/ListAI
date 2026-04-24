@@ -31,6 +31,7 @@ app.use(
       if (
         allowedOrigins.some((o) => origin === o) ||
         origin.endsWith('.vercel.app') ||
+        origin.endsWith('.pages.dev') ||
         origin === 'http://localhost:5173'
       ) {
         return callback(null, true);
