@@ -209,7 +209,12 @@ export default function Step9Photos() {
     ? `brightness(${1 + masterBrightness / 100}) contrast(${1 + masterContrast / 100}) saturate(${1 + masterSaturation / 100})`
     : 'none';
 
-  const hasProcessed = store.processedPhotoUrls.length > 0;
+  // Hoist labelUrl early so we can filter it out of processedPhotoUrls below
+  const labelUrl = store.labelPhotoUrl;
+  // Strip any labelUrl that crept into processedPhotoUrls via an older handleNext bug
+  const processedItemUrls = store.processedPhotoUrls.filter((u) => u !== labelUrl);
+
+  const hasProcessed = processedItemUrls.length > 0;
   const isProcessing = !processingTimedOut && (store.imageJobStatus === 'PROCESSING' || store.imageJobStatus === 'QUEUED');
   const showEnhanceButton = !hasProcessed && !isProcessing && !retrying;
 
@@ -234,38 +239,60 @@ export default function Step9Photos() {
     }
   }
 
-  const labelUrl = store.labelPhotoUrl;
+  // ── Cloudinary public-id extraction ──────────────────────────────────────
+  // Both the original upload URL and the processed (eager-transformation) URL share the
+  // same Cloudinary public_id.  We use this to match them regardless of array index.
+  // URL formats:
+  //   original:  .../upload/v1234/listai/originals/abc.jpg
+  //   processed: .../upload/e_trim:15,...,f_jpg/v1234/listai/originals/abc.jpg
+  function extractPublicId(url: string): string {
+    // After the version segment the public_id lives, e.g. /v1234/listai/originals/abc
+    const m = url.match(/\/v\d+\/(.+?)(?:\.[a-zA-Z]+)?(?:\?.*)?$/);
+    if (m) return m[1];
+    // Fallback for version-less URLs: grab the last path component before the extension
+    const m2 = url.match(/\/upload\/(?:[^/]+\/)*(.+?)(?:\.[a-zA-Z]+)?(?:\?.*)?$/);
+    return m2 ? m2[1] : url;
+  }
 
-  // orderedPhotos is the canonical order — always keyed on processed URLs (or originals if
-  // processing hasn't completed yet).  The toggle NEVER changes this array; it only controls
-  // which version (processed vs original) is shown for each slot.
+  // Build a pub-id → original-URL lookup so we can match regardless of array order.
+  const origByPid = new Map(store.itemPhotoUrls.map((u) => [extractPublicId(u), u]));
+
+  // procToOrig maps each processed URL to its original counterpart by shared public_id.
+  // This is robust even if the two arrays have different lengths or ordering.
+  const procToOrig = new Map<string, string>(
+    processedItemUrls.map((proc) => {
+      const orig = origByPid.get(extractPublicId(proc));
+      return [proc, orig ?? proc];
+    }),
+  );
+
+  // orderedPhotos is the canonical drag order.  It is keyed on processed URLs when
+  // processing is done, or on original URLs when processing hasn't completed yet.
+  // The label is always appended at the end.
+  // We filter any labelUrl that may have crept into processedPhotoUrls from an older save.
   const [orderedPhotos, setOrderedPhotos] = useState<string[]>(() => {
-    const base = store.processedPhotoUrls.length ? store.processedPhotoUrls : store.itemPhotoUrls;
+    const base = processedItemUrls.length ? processedItemUrls : store.itemPhotoUrls;
     return labelUrl ? [...base, labelUrl] : base;
   });
 
   // When processed photos arrive from the background job, switch the canonical order to
-  // processed URLs.  This fires once (processedPhotoUrls.length grows from 0 → N).
+  // processed URLs.  This fires once (processedItemUrls.length grows from 0 → N).
   useEffect(() => {
-    if (!store.processedPhotoUrls.length) return;
+    if (!processedItemUrls.length) return;
     setOrderedPhotos((prev) => {
-      // If we already have processed URLs in the list, keep user's drag order
-      const alreadyProcessed = prev.some((u) => u !== labelUrl && store.processedPhotoUrls.includes(u));
+      // If we already have processed URLs in the list, keep the user's drag order.
+      const alreadyProcessed = prev.some(
+        (u) => u !== labelUrl && processedItemUrls.includes(u),
+      );
       if (alreadyProcessed) return prev;
-      // Otherwise swap in the processed URLs in the same relative order as the originals
-      const base = store.processedPhotoUrls;
-      return labelUrl ? [...base, labelUrl] : base;
+      // Otherwise swap in the processed URLs.
+      return labelUrl ? [...processedItemUrls, labelUrl] : processedItemUrls;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.processedPhotoUrls.length]);
-
-  // Map processed URL → original URL for display-only toggling
-  const procToOrig = new Map(
-    store.processedPhotoUrls.map((proc, i) => [proc, store.itemPhotoUrls[i] ?? proc]),
-  );
+  }, [processedItemUrls.length]);
 
   // displayPhotos is what the grid renders.  orderedPhotos never changes on toggle —
-  // only the display changes.
+  // only the display URL changes.  The label always stays as-is.
   const displayPhotos = showOriginal
     ? orderedPhotos.map((url) => (url === labelUrl ? url : (procToOrig.get(url) ?? url)))
     : orderedPhotos;
@@ -334,11 +361,12 @@ export default function Step9Photos() {
   async function handleNext() {
     if (!id || !canProceed) return;
 
-    // Save ordered list as processedImageUrls; keep original imageUrls intact
-    await updateListing(id, { processedImageUrls: orderedPhotos });
-
-    // Sync store: processed photos = ordered list minus label
+    // Save ordered list as processedImageUrls — exclude the label URL so the DB and store
+    // never accumulate it inside processedPhotoUrls (which broke the toggle via index drift).
     const nonLabel = orderedPhotos.filter((u) => u !== labelUrl);
+    await updateListing(id, { processedImageUrls: nonLabel });
+
+    // Sync store
     store.setProcessedPhotos(nonLabel);
 
     store.setCurrentStep(8);
