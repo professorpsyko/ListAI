@@ -298,15 +298,16 @@ export default function Step9Photos() {
     : orderedPhotos;
 
   // ── DEBUG (remove before ship) ────────────────────────────────────────────
-  console.group('[Step9] Photo toggle debug');
-  console.log('showOriginal:', showOriginal);
-  console.log('store.itemPhotoUrls:', store.itemPhotoUrls);
-  console.log('store.processedPhotoUrls:', store.processedPhotoUrls);
-  console.log('processedItemUrls (after filtering label):', processedItemUrls);
-  console.log('labelUrl:', labelUrl);
-  console.log('orderedPhotos:', orderedPhotos);
-  console.log('procToOrig entries:', [...procToOrig.entries()]);
-  console.log('displayPhotos:', displayPhotos);
+  console.group('[Step9] Photo toggle debug — showOriginal=' + showOriginal);
+  console.log('itemPhotoUrls[0]    :', store.itemPhotoUrls[0]);
+  console.log('processedPhotoUrls[0]:', store.processedPhotoUrls[0]);
+  console.log('SAME URL?           :', store.itemPhotoUrls[0] === store.processedPhotoUrls[0]);
+  console.log('orig[0] length      :', store.itemPhotoUrls[0]?.length);
+  console.log('proc[0] length      :', store.processedPhotoUrls[0]?.length);
+  console.log('procToOrig[proc0] → :', procToOrig.get(processedItemUrls[0]));
+  console.log('displayPhotos[0]    :', displayPhotos[0]);
+  console.log('orderedPhotos[0]    :', orderedPhotos[0]);
+  console.log('DISPLAY DIFFERS FROM ORDERED?:', displayPhotos[0] !== orderedPhotos[0]);
   console.groupEnd();
   // ── END DEBUG ─────────────────────────────────────────────────────────────
 
